@@ -50,7 +50,7 @@
     "util": "^0.12.5",
     "moment-timezone": "^0.5.45",
     "wa-sticker-formatter": "^4.4.4",
-    "file-type": "16.5.4",
+    "file-type": "^16.5.4",
     "mongodb": "^6.5.0",
     "mongoose": "^8.3.0",
     "bcrypt": "^5.1.1",
