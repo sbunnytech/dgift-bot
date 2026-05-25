@@ -9,12 +9,42 @@ import fs from 'fs'
 import AdmZip from 'adm-zip'
 import pkg from '@whiskeysockets/baileys'
 const { default: makeWASocket, DisconnectReason, fetchLatestBaileysVersion, useMultiFileAuthState, makeCacheableSignalKeyStore, Browsers } = pkg
-import { getBotSettings, listenSettingsUpdates, supabase } from './lib/supabase.js'
-import { initializeRouter, handleMessages } from './lib/router.js'
 import 'dotenv/config'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
+
+// --- DYNAMIC AUTO-FIX LOGIC FOR CASE-SENSITIVITY & CACHE FILES ---
+const LIB_DIR = join(__dirname, 'lib')
+
+if (fs.existsSync(LIB_DIR)) {
+  const files = fs.readdirSync(LIB_DIR)
+  
+  // 1. Kagua na utoe taarifa kuhusu chache.js/cache.js
+  const chacheFile = files.find(f => f.toLowerCase() === 'chache.js')
+  const cacheFile = files.find(f => f.toLowerCase() === 'cache.js')
+  if (chacheFile) {
+    console.log(`⚠️ INFO: Picha ilionesha '${chacheFile}' ipo kwenye lib/ folder.`)
+  } else if (cacheFile) {
+    console.log(`ℹ️ INFO: Faili linalofaa la '${cacheFile}' lipo tayari.`)
+  }
+
+  // 2. Tafuta supabase.js kwa mchanganyiko wowote wa herufi (Mixed-case)
+  const foundSupabase = files.find(f => f.toLowerCase() === 'supabase.js')
+  if (foundSupabase && foundSupabase !== 'supabase.js') {
+    console.log(`🔧 FIXING: Imegundulika '${foundSupabase}'. Inarekebishwa kuwa 'supabase.js' kwa ajili ya Linux/Render...`)
+    try {
+      fs.renameSync(join(LIB_DIR, foundSupabase), join(LIB_DIR, 'supabase.js'))
+      console.log(`✅ SUCCESS: Jina limerekebishwa kikamilifu!`)
+    } catch (err) {
+      console.error(`❌ FAILED: Imeshindwa kubadili jina la faili:`, err.message)
+    }
+  }
+}
+
+// Dynamic Imports ili kuzuia ESM isife kabla ya kurekebisha majina ya faili
+let getBotSettings, listenSettingsUpdates, supabase;
+let initializeRouter, handleMessages;
 
 // 1. GLOBAL STATE
 let botSettings = null
@@ -278,6 +308,16 @@ async function sendConfirmationMessage() {
 // 10. MAIN START
 async function startBot() {
   try {
+    // Kufanya dynamic imports baada ya mifumo ya majina ya faili kusawazishwa juu
+    const supabaseModule = await import('./lib/supabase.js')
+    getBotSettings = supabaseModule.getBotSettings
+    listenSettingsUpdates = supabaseModule.listenSettingsUpdates
+    supabase = supabaseModule.supabase
+
+    const routerModule = await import('./lib/router.js')
+    initializeRouter = routerModule.initializeRouter
+    handleMessages = routerModule.handleMessages
+
     await initializeRouter()
     botSettings = await getBotSettings()
     if (!botSettings) {
@@ -309,3 +349,4 @@ process.on('uncaughtException', (err) => console.error('Caught exception:', err.
 process.on('unhandledRejection', (reason) => console.error('Unhandled Rejection:', reason))
 
 startBot()
+      
