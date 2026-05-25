@@ -1,23 +1,23 @@
 import axios from 'axios'
 
-export const name = 'ai'
-export const alias = ['chatgpt', 'gpt', 'chat']
+export const name = 'chatgpt'
+export const alias = ['gpt', 'chat']
 export const category = 'AI'
 export const desc = 'Chat with ChatGPT'
 
-export default async function ai(sock, { msg, from }, botSettings) {
+export default async function chatgpt(sock, { msg, from }, botSettings) {
   try {
     const text = msg.message?.conversation || msg.message?.extendedTextMessage?.text || ''
     const args = text.split(' ').slice(1)
     const prompt = args.join(' ')
 
     if (!prompt) {
-      return sock.sendMessage(from, { text: '❌ Usage:.ai hello' }, { quoted: msg })
+      return sock.sendMessage(from, { text: '❌ Usage:.chatgpt hello' }, { quoted: msg })
     }
 
     await sock.sendMessage(from, { react: { text: '🧠', key: msg.key } })
 
-    // Fetch bot info from b_settings table
+    // Fetch owner info from b_settings table
     let ownerName = 'Owner'
     let ownerNumber = ''
 
@@ -77,7 +77,7 @@ Rules:
     await sock.sendMessage(from, { text: reply }, { quoted: msg })
 
   } catch (error) {
-    console.log('AI command error:', error.message)
+    console.log('ChatGPT command error:', error.message)
     await sock.sendMessage(from, { text: '❌ AI is down right now. Try again later.' }, { quoted: msg })
   }
 }
