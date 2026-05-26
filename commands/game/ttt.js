@@ -1,10 +1,4 @@
-import { createClient } from '@supabase/supabase-js'
-
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_KEY
-)
-
+// commands/game/tictactoe.js
 export const name = 'tictactoe'
 export const alias = ['ttt', 'tic', 'xo']
 export const category = 'Game'
@@ -18,12 +12,14 @@ const winningCombos = [
   [0, 4, 8], [2, 4, 6] // diags
 ]
 
-async function getBrandName() {
-  const { data } = await supabase
-   .from('b_settings')
-   .select('brand_name, botname')
-   .eq('id', 'DGIFT_DEFAULT')
-   .maybeSingle()
+async function getBrandName(botSettings) {
+  if (!botSettings.supabase) return 'Bot'
+
+  const { data } = await botSettings.supabase
+ .from('b_settings')
+ .select('brand_name, botname')
+ .eq('id', 'DGIFT_DEFAULT')
+ .maybeSingle()
 
   return data?.brand_name || data?.botname || 'Bot'
 }
@@ -92,7 +88,7 @@ function botMove(board) {
 
 export default async function tictactoe(sock, { msg, from, sender }, botSettings) {
   try {
-    const brandName = await getBrandName()
+    const brandName = await getBrandName(botSettings)
 
     const body = msg.message?.conversation || msg.message?.extendedTextMessage?.text || ''
     const args = body.trim().split(' ').slice(1)
@@ -223,7 +219,7 @@ export default async function tictactoe(sock, { msg, from, sender }, botSettings
 
       // Bot move
       if (game.vsBot && game.turn === 'O') {
-        await new Promise(r => setTimeout(r, 800)) // Drama
+        await new Promise(r => setTimeout(r, 800))
 
         const botPos = botMove(game.board)
         game.board[botPos] = 'O'
