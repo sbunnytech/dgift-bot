@@ -1,4 +1,9 @@
-import { supabase } from '../../lib/supabase.js'
+import { createClient } from '@supabase/supabase-js'
+
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_KEY
+)
 
 export const name = 'autoreact'
 export const alias = ['reacton', 'autorc']
@@ -19,6 +24,7 @@ export default async function autoreact(sock, { msg, from, sender, isGroup, isAd
     const mode = args[1]?.toLowerCase()
 
     const targetJid = mode === 'group' && isGroup? from : 'DGIFT_DEFAULT'
+
     const { data: settings } = await supabase
      .from('b_settings')
      .select('autoreact')
@@ -44,16 +50,23 @@ export default async function autoreact(sock, { msg, from, sender, isGroup, isAd
     const newValue = ['on', 'enable', '1'].includes(action)
     if (newValue === currentValue) {
       await sock.sendMessage(from, { react: { text: '⚠️', key: msg.key } })
-      return await sock.sendMessage(from, { text: `> AutoReact already ${action}` }, { quoted: msg })
+      return await sock.sendMessage(from, { text: `> AutoReact is already ${action}` }, { quoted: msg })
     }
 
     const { error } = await supabase
      .from('b_settings')
-     .upsert({ id: targetJid, autoreact: newValue, updated_at: new Date().toISOString() }, { onConflict: 'id' })
+     .upsert(
+        {
+          id: targetJid,
+          autoreact: newValue,
+          updated_at: new Date().toISOString()
+        },
+        { onConflict: 'id' }
+      )
 
     if (error) {
       await sock.sendMessage(from, { react: { text: '❌', key: msg.key } })
-      return await sock.sendMessage(from, { text: '> Database error.' }, { quoted: msg })
+      return await sock.sendMessage(from, { text: `> Database error: ${error.message}` }, { quoted: msg })
     }
 
     await sock.sendMessage(from, { react: { text: newValue? '✅' : '❌', key: msg.key } })
