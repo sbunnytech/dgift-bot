@@ -1,4 +1,9 @@
-import { supabase } from '../../lib/supabase.js'
+import { createClient } from '@supabase/supabase-js'
+
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_KEY
+)
 
 export const name = 'setbrandname'
 export const alias = ['brandname', 'setbrand', 'brand']
@@ -63,10 +68,23 @@ export default async function setbrandname(sock, { msg, from, sender, isGroup, i
 
     if (error) {
       await sock.sendMessage(from, { react: { text: '❌', key: msg.key } })
-      return await sock.sendMessage(from, { text: '> Database error.' }, { quoted: msg })
+      return await sock.sendMessage(from, { text: `> Database error: ${error.message}` }, { quoted: msg })
     }
 
     await sock.sendMessage(from, { react: { text: '✅', key: msg.key } })
     await sock.sendMessage(from, {
       text: `╭─⌈ ✅ *Brand Name Updated* ⌋
+│ Old: ${currentBrand}
+│ New: ${newBrand}
+│ Status: Applied instantly
 │
+│ All message footers will use the new brand name now
+╰⊷ *${botname}*`
+    }, { quoted: msg })
+
+  } catch (err) {
+    console.error(`[SETBRANDNAME ERROR]`, err.message)
+    await sock.sendMessage(from, { react: { text: '❌', key: msg.key } })
+    await sock.sendMessage(from, { text: '> Failed to update brand name.' }, { quoted: msg })
+  }
+}
