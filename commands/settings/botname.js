@@ -18,13 +18,13 @@ export default async function setbotname(sock, { msg, from, sender, isGroup, isA
 
     const body = msg.message?.conversation || msg.message?.extendedTextMessage?.text || ''
     const args = body.trim().split(' ').slice(1)
-    const newName = args.join(' ')
+    const newName = args.join(' ').trim()
 
     const { data: settings } = await botSettings.supabase
-  .from('b_settings')
-  .select('botname, brand_name, prefix')
-  .eq('id', 'DGIFT_DEFAULT')
-  .maybeSingle()
+     .from('b_settings')
+     .select('botname, brand_name, prefix')
+     .eq('id', 'DGIFT_DEFAULT')
+     .maybeSingle()
 
     const currentName = settings?.botname || 'dgift-bot'
     const prefix = settings?.prefix || '.'
@@ -56,18 +56,22 @@ export default async function setbotname(sock, { msg, from, sender, isGroup, isA
     }
 
     const { error } = await botSettings.supabase
-  .from('b_settings')
-  .update({
+     .from('b_settings')
+     .update({
         botname: newName,
         brand_name: newName,
         updated_at: new Date().toISOString()
-    })
-  .eq('id', 'DGIFT_DEFAULT')
+      })
+     .eq('id', 'DGIFT_DEFAULT')
 
     if (error) {
       await sock.sendMessage(from, { react: { text: '❌', key: msg.key } })
       return await sock.sendMessage(from, { text: `> Database error: ${error.message}` }, { quoted: msg })
     }
+
+    // Update live memory pia
+    botSettings.botname = newName
+    botSettings.brand_name = newName
 
     await sock.sendMessage(from, { react: { text: '✅', key: msg.key } })
     await sock.sendMessage(from, {
