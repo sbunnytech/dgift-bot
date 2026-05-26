@@ -1,10 +1,4 @@
-import { createClient } from '@supabase/supabase-js'
-
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_KEY
-)
-
+// commands/settings/setbotname.js
 export const name = 'setbotname'
 export const alias = ['botname', 'setname', 'changename']
 export const category = 'Settings'
@@ -12,6 +6,10 @@ export const desc = 'Change bot name and brand name'
 
 export default async function setbotname(sock, { msg, from, sender, isGroup, isAdmin }, botSettings) {
   try {
+    if (!botSettings.supabase) {
+      return sock.sendMessage(from, { text: '> Database connection not ready.' }, { quoted: msg })
+    }
+
     const isOwner = sender === botSettings.owner_number + '@s.whatsapp.net'
     if (!isOwner) {
       await sock.sendMessage(from, { react: { text: '❌', key: msg.key } })
@@ -22,11 +20,11 @@ export default async function setbotname(sock, { msg, from, sender, isGroup, isA
     const args = body.trim().split(' ').slice(1)
     const newName = args.join(' ')
 
-    const { data: settings } = await supabase
-     .from('b_settings')
-     .select('botname, brand_name, prefix')
-     .eq('id', 'DGIFT_DEFAULT')
-     .maybeSingle()
+    const { data: settings } = await botSettings.supabase
+  .from('b_settings')
+  .select('botname, brand_name, prefix')
+  .eq('id', 'DGIFT_DEFAULT')
+  .maybeSingle()
 
     const currentName = settings?.botname || 'dgift-bot'
     const prefix = settings?.prefix || '.'
@@ -57,14 +55,14 @@ export default async function setbotname(sock, { msg, from, sender, isGroup, isA
       return await sock.sendMessage(from, { text: `> Bot name is already set to "${currentName}"` }, { quoted: msg })
     }
 
-    const { error } = await supabase
-     .from('b_settings')
-     .update({
+    const { error } = await botSettings.supabase
+  .from('b_settings')
+  .update({
         botname: newName,
         brand_name: newName,
         updated_at: new Date().toISOString()
-      })
-     .eq('id', 'DGIFT_DEFAULT')
+    })
+  .eq('id', 'DGIFT_DEFAULT')
 
     if (error) {
       await sock.sendMessage(from, { react: { text: '❌', key: msg.key } })
