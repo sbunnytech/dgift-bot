@@ -11,23 +11,16 @@ export default async function setprefix(sock, { msg, from, sender }, botSettings
       return sock.sendMessage(from, { text: '> Database connection not ready.' }, { quoted: msg })
     }
 
-    // Ruhusu owner pekee
-    const isOwner = sender === botSettings.owner_number + '@s.whatsapp.net'
-    if (!isOwner) {
-      await sock.sendMessage(from, { react: { text: '❌', key: msg.key } })
-      return await sock.sendMessage(from, { text: '> Owner only command.' }, { quoted: msg })
-    }
-
     const body = msg.message?.conversation || msg.message?.extendedTextMessage?.text || ''
     const args = body.trim().split(' ').slice(1)
     const newPrefix = args[0]?.trim()
 
     // Chukua settings za sasa
     const { data: settings } = await botSettings.supabase
-  .from('b_settings')
-  .select('prefix, botname, brand_name')
-  .eq('id', 'DGIFT_DEFAULT')
-  .maybeSingle()
+.from('b_settings')
+.select('prefix, botname, brand_name')
+.eq('id', 'DGIFT_DEFAULT')
+.maybeSingle()
 
     const currentPrefix = settings?.prefix || '.'
     const botname = settings?.botname || 'Bot'
@@ -64,12 +57,12 @@ export default async function setprefix(sock, { msg, from, sender }, botSettings
 
     // Sasisha database
     const { error } = await botSettings.supabase
-  .from('b_settings')
-  .update({
+.from('b_settings')
+.update({
         prefix: newPrefix,
         updated_at: new Date().toISOString()
       })
-  .eq('id', 'DGIFT_DEFAULT')
+.eq('id', 'DGIFT_DEFAULT')
 
     if (error) {
       await sock.sendMessage(from, { react: { text: '❌', key: msg.key } })
