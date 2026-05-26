@@ -1,6 +1,6 @@
 import axios from 'axios'
 
-export const name = 'ai'
+export const name = 'dgift'
 export const category = 'AI'
 export const desc = 'Chat with AI using Groq'
 
