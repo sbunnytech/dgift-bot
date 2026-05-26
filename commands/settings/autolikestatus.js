@@ -20,13 +20,13 @@ export default async function autolikestatus(sock, { msg, from, sender, isGroup,
     const args = body.trim().split(' ').slice(1)
     const action = args[0]?.toLowerCase()
 
-    const targetJid = 'DGIFT_DEFAULT' // autolikestatus ni global tu
+    const targetJid = 'DGIFT_DEFAULT' // global setting only
 
     const { data: settings } = await botSettings.supabase
-    .from('b_settings')
-    .select('autolikestatus')
-    .eq('id', targetJid)
-    .maybeSingle()
+   .from('b_settings')
+   .select('autolikestatus')
+   .eq('id', targetJid)
+   .maybeSingle()
 
     const currentValue = settings?.autolikestatus || false
 
@@ -41,7 +41,7 @@ export default async function autolikestatus(sock, { msg, from, sender, isGroup,
 │ ${botSettings.prefix}autolikestatus on
 │ ${botSettings.prefix}autolikestatus off
 │
-│ Note: Bot itapenda status zote na random emoji
+│ Note: Bot will like all statuses with random emojis
 ╰⊷ *${botSettings.botname}*`
       }, { quoted: msg })
     }
@@ -49,12 +49,12 @@ export default async function autolikestatus(sock, { msg, from, sender, isGroup,
     const newValue = ['on', 'enable', '1'].includes(action)
     if (newValue === currentValue) {
       await sock.sendMessage(from, { react: { text: '⚠️', key: msg.key } })
-      return await sock.sendMessage(from, { text: `> AutoLikeStatus already ${action}` }, { quoted: msg })
+      return await sock.sendMessage(from, { text: `> AutoLikeStatus is already ${action}` }, { quoted: msg })
     }
 
     const { error } = await botSettings.supabase
-    .from('b_settings')
-    .upsert({
+   .from('b_settings')
+   .upsert({
         id: targetJid,
         autolikestatus: newValue,
         updated_at: new Date().toISOString()
@@ -71,7 +71,7 @@ export default async function autolikestatus(sock, { msg, from, sender, isGroup,
 │ Target: Global 🌍
 │ AutoLikeStatus: ${newValue? 'ON ✅' : 'OFF ❌'}
 │
-│ ${newValue? 'Bot itapenda status zote automatically.' : 'Auto like status imezimwa.'}
+│ ${newValue? 'Bot will now like all statuses automatically.' : 'Auto like status has been disabled.'}
 ╰⊷ *${botSettings.botname}*`
     }, { quoted: msg })
 
