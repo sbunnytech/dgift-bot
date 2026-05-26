@@ -1,6 +1,6 @@
 // commands/tools/clearsessions.js
 import fs from 'fs'
-import { supabase } from '../../index.js'
+import path from 'path'
 
 export const name = 'clearsessions'
 export const alias = ['clearsession', 'delsession', 'resetsession']
@@ -10,7 +10,7 @@ export const desc = 'Delete session folder and Supabase session data. Bot will r
 export default async function clearsessions(sock, { msg, from, sender }, botSettings) {
   let loadingMsg = null
   try {
-    const brand = botSettings?.brand_name || botSettings?.botname || 'DGIFT BOT'
+    const brand = await getBrandName(botSettings)
 
     await sock.sendMessage(from, { react: { text: '🗑️', key: msg.key } })
 
@@ -24,21 +24,26 @@ export default async function clearsessions(sock, { msg, from, sender }, botSett
 ╰⊷ *Powered By ${brand}*`
     }, { quoted: msg })
 
-    // 1. Futa session folder locally
-    const sessionDir = './session'
+    // 1. Delete session folder locally
+    const sessionDir = path.resolve('./session')
     if (fs.existsSync(sessionDir)) {
       fs.rmSync(sessionDir, { recursive: true, force: true })
       console.log('[CLEARSESSION] Local session folder deleted')
     }
 
-    // 2. Futa session kwenye Supabase bu_sessions table
-    const { error } = await supabase
-      .from('bu_sessions')
-      .delete()
-      .eq('id', 'full_session')
+    // 2. Delete session from Supabase
+    const instanceId = botSettings.instance_id || 'DGIFT_DEFAULT'
+    if (botSettings.supabase) {
+      const { error } = await botSettings.supabase
+        .from('bu_sessions')
+        .delete()
+        .eq('id', instanceId)
 
-    if (error) throw error
-    console.log('[CLEARSESSION] Supabase session deleted')
+      if (error) throw error
+      console.log('[CLEARSESSION] Supabase session deleted for', instanceId)
+    } else {
+      console.log('[CLEARSESSION] No Supabase client, skipping DB delete')
+    }
 
     // 3. Success message
     await sock.sendMessage(from, {
@@ -57,34 +62,44 @@ export default async function clearsessions(sock, { msg, from, sender }, botSett
 
     await sock.sendMessage(from, { react: { text: '✅', key: loadingMsg.key } }).catch(() => {})
 
-    // 4. Disconnect ili i-trigger reconnect loop
-    setTimeout(() => {
-      sock.end()
+    // 4. Disconnect to trigger reconnect loop
+    setTimeout(async () => {
+      try {
+        if (sock.logout) await sock.logout()
+        else if (sock.ws) sock.ws.close()
+        else process.exit(1)
+      } catch (e) {
+        console.error('[CLEARSESSION] Disconnect error:', e.message)
+        process.exit(1)
+      }
     }, 3000)
 
   } catch (error) {
-    console.error('[CLEARSESSIONS ERROR]', error.message)
-    const brand = botSettings?.brand_name || botSettings?.botname || 'DGIFT BOT'
+    console.error('[CLEARSESSIONS ERROR]', error)
+    const brand = await getBrandName(botSettings)
 
-    if (loadingMsg) {
-      await sock.sendMessage(from, {
-        text: `╭─⌈ ❌ *ERROR* ⌋
-│
-│ Failed to clear sessions
-│ Reason: ${error.message}
-│
-╰⊷ *Powered By ${brand}*`,
-        edit: loadingMsg.key
-      }).catch(() => {})
-    } else {
-      await sock.sendMessage(from, {
-        text: `╭─⌈ ❌ *ERROR* ⌋
+    const errorMsg = `╭─⌈ ❌ *ERROR* ⌋
 │
 │ Failed to clear sessions
 │ Reason: ${error.message}
 │
 ╰⊷ *Powered By ${brand}*`
-      }, { quoted: msg })
+
+    if (loadingMsg) {
+      await sock.sendMessage(from, { text: errorMsg, edit: loadingMsg.key }).catch(() => {})
+    } else {
+      await sock.sendMessage(from, { text: errorMsg }, { quoted: msg })
     }
   }
+}
+
+async function getBrandName(botSettings) {
+  if (!botSettings?.supabase) return botSettings?.brand_name || botSettings?.botname || 'DGIFT BOT'
+  const instanceId = botSettings.instance_id || 'DGIFT_DEFAULT'
+  const { data } = await botSettings.supabase
+    .from('b_settings')
+    .select('brand_name, botname')
+    .eq('id', instanceId)
+    .maybeSingle()
+  return data?.brand_name || data?.botname || 'DGIFT BOT'
 }
