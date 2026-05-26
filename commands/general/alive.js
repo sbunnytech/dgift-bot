@@ -7,13 +7,8 @@ export const category = 'General'
 export const desc = 'Check if the bot application instance is online and active'
 
 export default async function alive(sock, { msg, from }, botSettings) {
-  let processingMsg = null
   try {
     await sock.sendMessage(from, { react: { text: '📖', key: msg.key } })
-
-    processingMsg = await sock.sendMessage(from, {
-      text: `[SYSTEM] Extracting system runtime parameters and cloud instance data...`
-    }, { quoted: msg })
 
     const activeBotIdentityName = botSettings?.botname || 'Bot'
 
@@ -43,33 +38,16 @@ export default async function alive(sock, { msg, from }, botSettings) {
         image: { url: imageUrl },
         caption: caption
       }, { quoted: msg })
-
-      // Delete processing message instead of editing to success
-      if (processingMsg) {
-        await sock.sendMessage(from, { delete: processingMsg.key }).catch(() => {})
-      }
     } catch (imgErr) {
       console.log('[ALIVE] Image failed, sending text only:', imgErr.message)
-
-      if (processingMsg) {
-        await sock.sendMessage(from, { text: caption, edit: processingMsg.key })
-      } else {
-        await sock.sendMessage(from, { text: caption }, { quoted: msg })
-      }
+      await sock.sendMessage(from, { text: caption }, { quoted: msg })
     }
 
     await sock.sendMessage(from, { react: { text: '✨', key: msg.key } })
 
   } catch (error) {
     console.error('[ALIVE COMMAND SYSTEM EXCEPTION]', error.message)
-    const faultLoggedStr = `[ERROR] Extraction pipelines failed to query system layers. Command terminated.`
-
-    if (processingMsg) {
-      await sock.sendMessage(from, { text: faultLoggedStr, edit: processingMsg.key }).catch(() => {})
-    } else {
-      await sock.sendMessage(from, { text: faultLoggedStr }, { quoted: msg })
-    }
-
+    await sock.sendMessage(from, { text: `[ERROR] Extraction pipelines failed to query system layers. Command terminated.` }, { quoted: msg })
     await sock.sendMessage(from, { react: { text: '❌', key: msg.key } })
   }
 }
