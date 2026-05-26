@@ -1,8 +1,8 @@
 // commands/download/play.js
 
-import ytdl from '@distube/ytdl-core'
-import yts from 'yt-search'
 import axios from 'axios'
+import yts from 'yt-search'
+import ytdl from '@distube/ytdl-core'
 import fs from 'fs'
 import path from 'path'
 import { pipeline } from 'stream'
@@ -11,165 +11,348 @@ import { promisify } from 'util'
 const pipelineAsync = promisify(pipeline)
 
 export const name = 'play'
-export const alias = ['song', 'ytmp3', 'ytplay']
+
+export const alias = [
+  'song',
+  'music',
+  'ytmp3',
+  'audio',
+  'mp3'
+]
+
 export const category = 'Download'
-export const desc = 'Ultra Backup YouTube Audio Downloader'
+
+export const desc =
+  'Universal Music Downloader'
 
 const TMP_DIR = './tmp'
 
 if (!fs.existsSync(TMP_DIR)) {
-  fs.mkdirSync(TMP_DIR, { recursive: true })
+  fs.mkdirSync(TMP_DIR, {
+    recursive: true
+  })
 }
 
 /*
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-15+ FREE OPEN APIs / SCRAPERS
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+ULTRA AUDIO APIs
+━━━━━━━━━━━━━━━━━━━━━━━━━━
 */
 
-const API_PROVIDERS = [
+const AUDIO_APIS = [
 
   // 1
-  async (id) => {
-    const { data } = await axios.get(`https://api.vevioz.com/api/button/mp3/${id}`)
-    const match = data.match(/href="(https:\/\/[^"]+\.mp3[^"]*)"/)
-    return match?.[1]
+  async (url) => {
+    const { data } =
+      await axios.get(
+        `https://www.tikwm.com/api/?url=${encodeURIComponent(url)}`
+      )
+
+    return {
+      url:
+        data?.data?.music,
+      title:
+        data?.data?.title,
+      thumbnail:
+        data?.data?.cover
+    }
   },
 
   // 2
-  async (id) => {
-    const { data } = await axios.get(`https://api.vkrdown.com/api/y2mate.php?video_id=${id}`)
-    return data?.mp3_url
+  async (url) => {
+    const { data } =
+      await axios.get(
+        `https://api.agatz.xyz/api/ytmp3?url=${encodeURIComponent(url)}`
+      )
+
+    return {
+      url:
+        data?.data?.download,
+      title:
+        data?.data?.title,
+      thumbnail:
+        data?.data?.thumbnail
+    }
   },
 
   // 3
-  async (id) => {
-    const { data } = await axios.get(`https://cdn38.savetube.me/info?url=https://youtu.be/${id}`)
-    return data?.data?.downloadUrl
+  async (url) => {
+    const { data } =
+      await axios.get(
+        `https://api.douxx.tech/api/ytdlmp3?url=${encodeURIComponent(url)}`
+      )
+
+    return {
+      url:
+        data?.result?.download,
+      title:
+        data?.result?.title,
+      thumbnail:
+        data?.result?.image
+    }
   },
 
   // 4
-  async (id) => {
-    const { data } = await axios.get(`https://submagic-free-tools.fly.dev/api/youtube-to-mp3?url=https://youtu.be/${id}`)
-    return data?.download
+  async (url) => {
+    const { data } =
+      await axios.get(
+        `https://api.botcahx.eu.org/api/dowloader/ytmp3?url=${encodeURIComponent(url)}`
+      )
+
+    return {
+      url:
+        data?.result?.dl,
+      title:
+        data?.result?.title,
+      thumbnail:
+        data?.result?.thumbnail
+    }
   },
 
   // 5
-  async (id) => {
-    const { data } = await axios.get(`https://api.cobalt.tools/api/json`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      data: {
-        url: `https://youtu.be/${id}`,
-        vCodec: 'h264',
-        vQuality: '720',
-        aFormat: 'mp3'
-      }
-    })
+  async (url) => {
+    const { data } =
+      await axios.get(
+        `https://api.ryzendesu.vip/api/downloader/ytmp3?url=${encodeURIComponent(url)}`
+      )
 
-    return data?.url
+    return {
+      url:
+        data?.url,
+      title:
+        data?.title,
+      thumbnail:
+        data?.thumbnail
+    }
   },
 
   // 6
-  async (id) => {
-    const { data } = await axios.get(`https://p.oceansaver.in/ajax/download.php?format=mp3&url=https://youtu.be/${id}`)
-    return data?.url
+  async (url) => {
+    const { data } =
+      await axios.get(
+        `https://api.akuari.my.id/downloader/youtube?link=${encodeURIComponent(url)}`
+      )
+
+    return {
+      url:
+        data?.respon?.audio,
+      title:
+        data?.respon?.title,
+      thumbnail:
+        data?.respon?.thumbnail
+    }
   },
 
   // 7
-  async (id) => {
-    const { data } = await axios.get(`https://api.onlinevideoconverter.pro/api/convert?url=https://youtu.be/${id}`)
-    return data?.download_url
+  async (url) => {
+    const { data } =
+      await axios.get(
+        `https://api.vkrdown.com/api/y2mate.php?url=${encodeURIComponent(url)}`
+      )
+
+    return {
+      url:
+        data?.mp3_url,
+      title:
+        data?.title,
+      thumbnail:
+        data?.thumbnail
+    }
   },
 
   // 8
-  async (id) => {
-    const { data } = await axios.get(`https://co.wuk.sh/api/json`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      data: {
-        url: `https://youtu.be/${id}`,
-        filenamePattern: 'basic',
-        isAudioOnly: true
-      }
-    })
+  async (url) => {
+    const { data } =
+      await axios.get(
+        `https://api.vevioz.com/api/button/mp3/${encodeURIComponent(url)}`
+      )
 
-    return data?.url
+    const match =
+      data.match(
+        /href="(https:\/\/[^"]+\.mp3[^"]*)"/
+      )
+
+    return {
+      url:
+        match?.[1],
+      title:
+        'Audio Download',
+      thumbnail:
+        null
+    }
   },
 
   // 9
-  async (id) => {
-    const { data } = await axios.get(`https://api.mp3youtube.cc/dl?url=https://youtu.be/${id}`)
-    return data?.url
+  async (url) => {
+    const { data } =
+      await axios.post(
+        'https://co.wuk.sh/api/json',
+        {
+          url,
+          isAudioOnly: true
+        },
+        {
+          headers: {
+            'Content-Type':
+              'application/json'
+          }
+        }
+      )
+
+    return {
+      url:
+        data?.url,
+      title:
+        'Audio Download',
+      thumbnail:
+        null
+    }
   },
 
   // 10
-  async (id) => {
-    const { data } = await axios.get(`https://api.y2down.cc/api/download?url=https://youtu.be/${id}`)
-    return data?.download
-  },
+  async (url) => {
+    const { data } =
+      await axios.post(
+        'https://api.cobalt.tools/api/json',
+        {
+          url,
+          audioFormat: 'mp3'
+        },
+        {
+          headers: {
+            'Content-Type':
+              'application/json'
+          }
+        }
+      )
 
-  // 11
-  async (id) => {
-    const { data } = await axios.get(`https://apiyt.onrender.com/download/mp3?url=https://youtu.be/${id}`)
-    return data?.result?.download
-  },
-
-  // 12
-  async (id) => {
-    const { data } = await axios.get(`https://api.douxx.tech/api/ytdlmp3?url=https://youtu.be/${id}`)
-    return data?.result?.download
-  },
-
-  // 13
-  async (id) => {
-    const { data } = await axios.get(`https://api.ryzendesu.vip/api/downloader/ytmp3?url=https://youtu.be/${id}`)
-    return data?.url
-  },
-
-  // 14
-  async (id) => {
-    const { data } = await axios.get(`https://api.agatz.xyz/api/ytmp3?url=https://youtu.be/${id}`)
-    return data?.data?.download
-  },
-
-  // 15
-  async (id) => {
-    const { data } = await axios.get(`https://api.akuari.my.id/downloader/youtube?link=https://youtu.be/${id}`)
-    return data?.respon?.audio
-  },
-
-  // 16
-  async (id) => {
-    const { data } = await axios.get(`https://api.botcahx.eu.org/api/dowloader/ytmp3?url=https://youtu.be/${id}`)
-    return data?.result?.dl
+    return {
+      url:
+        data?.url,
+      title:
+        'Audio Download',
+      thumbnail:
+        null
+    }
   }
 
 ]
 
-export default async function play(sock, { msg, from, args }, botSettings) {
+export default async function play(
+  sock,
+  { msg, from, args, quoted },
+  botSettings
+) {
+
+  let filePath = null
 
   try {
 
-    const query = args.join(' ').trim()
+    /*
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━
+    GET QUERY
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━
+    */
 
-    if (!query) {
+    const query =
+      args.join(' ').trim()
+
+    const quotedText =
+      quoted?.message?.conversation ||
+      quoted?.message?.extendedTextMessage?.text ||
+      ''
+
+    let url =
+      query.match(/https?:\/\/[^\s]+/)?.[0] ||
+      quotedText.match(/https?:\/\/[^\s]+/)?.[0]
+
+    /*
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━
+    NO QUERY
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━
+    */
+
+    if (!query && !url) {
+
       await sock.sendMessage(from, {
-        text: `╭─❍
-│ 🎵 PLAY COMMAND
+        react: {
+          text: '🎵',
+          key: msg.key
+        }
+      })
+
+      return sock.sendMessage(from, {
+        text:
+`╭─⌈ 🎵 *Music Downloader* ⌋
+│ Status: Ready
 │
-│ Example:
+│ Usage:
 │ ${botSettings.prefix}play faded
-│ ${botSettings.prefix}play https://youtu.be/xxx
-╰─────────────`
+│ ${botSettings.prefix}play youtube_link
+│
+│ Supports:
+│ • YouTube
+│ • TikTok
+│ • Facebook
+│ • Instagram
+│ • Direct Audio Links
+│
+│ Reply To Link Supported
+╰⊷ *${botSettings.botname}*`
       }, { quoted: msg })
 
-      return
     }
+
+    /*
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━
+    SEARCH YOUTUBE
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━
+    */
+
+    let title = 'Audio Download'
+    let thumbnail = null
+
+    if (!url) {
+
+      const search =
+        await yts(query)
+
+      if (
+        !search.videos.length
+      ) {
+
+        await sock.sendMessage(from, {
+          react: {
+            text: '❌',
+            key: msg.key
+          }
+        })
+
+        return sock.sendMessage(from, {
+          text:
+'> No results found.'
+        }, { quoted: msg })
+
+      }
+
+      const video =
+        search.videos[0]
+
+      url = video.url
+
+      title =
+        video.title
+
+      thumbnail =
+        video.thumbnail
+
+    }
+
+    /*
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━
+    LOADING REACT
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━
+    */
 
     await sock.sendMessage(from, {
       react: {
@@ -178,164 +361,77 @@ export default async function play(sock, { msg, from, args }, botSettings) {
       }
     })
 
-    let videoUrl = query
-    let videoInfo = {}
-
     /*
-    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    SEARCH VIDEO
-    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━
+    PRIMARY INFO
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━
     */
-
-    if (!ytdl.validateURL(query)) {
-
-      const search = await yts(query)
-
-      if (!search.videos.length) {
-        return sock.sendMessage(from, {
-          text: '❌ No results found.'
-        }, { quoted: msg })
-      }
-
-      videoInfo = search.videos[0]
-      videoUrl = videoInfo.url
-
-    } else {
-
-      const info = await ytdl.getInfo(videoUrl)
-
-      videoInfo = {
-        title: info.videoDetails.title,
-        duration: info.videoDetails.lengthSeconds,
-        author: info.videoDetails.author.name,
-        thumbnail: info.videoDetails.thumbnails.pop()?.url,
-        videoId: info.videoDetails.videoId
-      }
-
-    }
-
-    if (!ytdl.validateURL(videoUrl)) {
-      return sock.sendMessage(from, {
-        text: '❌ Invalid YouTube URL.'
-      }, { quoted: msg })
-    }
-
-    const info = await ytdl.getInfo(videoUrl)
-
-    const videoId = info.videoDetails.videoId
-    const title = info.videoDetails.title
-    const duration = formatDuration(info.videoDetails.lengthSeconds)
-    const author = info.videoDetails.author.name
-    const thumbnail = info.videoDetails.thumbnails.pop()?.url
-
-    /*
-    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    SEND THUMBNAIL FIRST
-    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    */
-
-    await sock.sendMessage(from, {
-      image: { url: thumbnail },
-      caption: `╭─❍
-│ 🎵 DOWNLOADING
-│
-│ 📌 Title: ${title}
-│ ⏱ Duration: ${duration}
-│ 👤 Author: ${author}
-│
-│ 🔄 Searching 15+ APIs...
-╰─────────────`
-    }, { quoted: msg })
-
-    /*
-    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    TRY LOCAL YTDL FIRST
-    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    */
-
-    const safeTitle = title.replace(/[\\/:*?"<>|]/g, '').slice(0, 70)
-
-    const filePath = path.join(
-      TMP_DIR,
-      `${safeTitle}_${Date.now()}.mp3`
-    )
-
-    let downloaded = false
 
     try {
 
-      const stream = ytdl(videoUrl, {
-        filter: 'audioonly',
-        quality: 'highestaudio',
-        highWaterMark: 1 << 25
-      })
+      if (
+        ytdl.validateURL(url)
+      ) {
 
-      await pipelineAsync(
-        stream,
-        fs.createWriteStream(filePath)
-      )
+        const info =
+          await ytdl.getInfo(url)
 
-      downloaded = true
+        title =
+          info.videoDetails.title
 
-    } catch (err) {
+        thumbnail =
+          info.videoDetails
+            .thumbnails
+            ?.pop()?.url
 
-      console.log('PRIMARY FAILED:', err.message)
+      }
 
-    }
+    } catch {}
 
     /*
-    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    BACKUP APIs SYSTEM
-    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━
+    SILENT API SEARCH
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━
     */
 
-    if (!downloaded) {
+    let media = null
 
-      for (let i = 0; i < API_PROVIDERS.length; i++) {
+    for (const api of AUDIO_APIS) {
 
-        try {
+      try {
 
-          await sock.sendMessage(from, {
-            text: `🔄 Trying API Backup ${i + 1}/16`
-          }, { quoted: msg })
+        const result =
+          await api(url)
 
-          const url = await API_PROVIDERS[i](videoId)
+        if (
+          result &&
+          result.url
+        ) {
 
-          if (!url) continue
-
-          const response = await axios({
-            url,
-            method: 'GET',
-            responseType: 'stream',
-            timeout: 30000
-          })
-
-          await pipelineAsync(
-            response.data,
-            fs.createWriteStream(filePath)
-          )
-
-          downloaded = true
+          media = result
 
           break
 
-        } catch (e) {
-
-          console.log(`API ${i + 1} FAILED ->`, e.message)
-
         }
+
+      } catch (err) {
+
+        console.log(
+          '[API FAILED]',
+          err.message
+        )
 
       }
 
     }
 
     /*
-    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    CHECK DOWNLOAD
-    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━
+    FAILED
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━
     */
 
-    if (!downloaded || !fs.existsSync(filePath)) {
+    if (!media) {
 
       await sock.sendMessage(from, {
         react: {
@@ -345,33 +441,118 @@ export default async function play(sock, { msg, from, args }, botSettings) {
       })
 
       return sock.sendMessage(from, {
-        text: '❌ All 16 APIs failed.'
+        text:
+'> Failed to download audio.'
       }, { quoted: msg })
 
     }
 
     /*
-    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    FILE SIZE LIMIT
-    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━
+    FINAL DATA
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━
     */
 
-    const stats = fs.statSync(filePath)
+    title =
+      media.title ||
+      title ||
+      'Audio Download'
 
-    const fileSizeMB = stats.size / (1024 * 1024)
+    thumbnail =
+      media.thumbnail ||
+      thumbnail
 
-    if (fileSizeMB > 64) {
+    const safeTitle =
+      title
+      .replace(/[\\/:*?"<>|]/g, '')
+      .slice(0, 50)
 
-      return sock.sendMessage(from, {
-        text: '❌ File exceeds 64MB.'
-      }, { quoted: msg })
+    filePath = path.join(
+      TMP_DIR,
+      `${safeTitle}_${Date.now()}.mp3`
+    )
+
+    /*
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━
+    SEND THUMBNAIL
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━
+    */
+
+    if (thumbnail) {
+
+      try {
+
+        await sock.sendMessage(from, {
+          image: {
+            url: thumbnail
+          },
+          caption:
+`╭─⌈ 🎵 *Downloading Audio* ⌋
+│ Title:
+│ ${title}
+│
+│ Status:
+│ Downloading...
+╰⊷ *${botSettings.botname}*`
+        }, { quoted: msg })
+
+      } catch {}
 
     }
 
     /*
-    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    SEND AUDIO
-    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━
+    DOWNLOAD STREAM
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━
+    */
+
+    const response =
+      await axios({
+        url: media.url,
+        method: 'GET',
+        responseType: 'stream',
+        timeout: 30000,
+        headers: {
+          'User-Agent':
+            'Mozilla/5.0'
+        }
+      })
+
+    await pipelineAsync(
+      response.data,
+      fs.createWriteStream(filePath)
+    )
+
+    /*
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━
+    CHECK FILE
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━
+    */
+
+    if (
+      !fs.existsSync(filePath)
+    ) {
+
+      throw new Error(
+        'File save failed'
+      )
+
+    }
+
+    const stats =
+      fs.statSync(filePath)
+
+    const sizeMB =
+      (
+        stats.size /
+        1024 /
+        1024
+      ).toFixed(2)
+
+    /*
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━
+    SUCCESS REACT
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━
     */
 
     await sock.sendMessage(from, {
@@ -381,53 +562,89 @@ export default async function play(sock, { msg, from, args }, botSettings) {
       }
     })
 
+    /*
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━
+    SEND AUDIO
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━
+    */
+
     await sock.sendMessage(from, {
-      audio: fs.readFileSync(filePath),
-      mimetype: 'audio/mpeg',
-      ptt: false,
-      fileName: `${safeTitle}.mp3`
+      audio: {
+        url: filePath
+      },
+      mimetype:
+        'audio/mpeg',
+      fileName:
+        `${safeTitle}.mp3`,
+      ptt: false
     }, { quoted: msg })
 
     /*
-    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    NO DELETE
-    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━
+    CLEANUP
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━
     */
 
-    // FILE WILL STAY
-    // NO fs.unlinkSync(filePath)
+    try {
+
+      fs.unlinkSync(filePath)
+
+    } catch {}
 
   } catch (err) {
 
-    console.error('PLAY ERROR:', err)
+    console.error(
+      '[PLAY ERROR]',
+      err.message
+    )
+
+    /*
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━
+    ERROR REACT
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━
+    */
+
+    try {
+
+      await sock.sendMessage(from, {
+        react: {
+          text: '❌',
+          key: msg.key
+        }
+      })
+
+    } catch {}
+
+    /*
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━
+    ERROR MESSAGE
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━
+    */
 
     await sock.sendMessage(from, {
-      react: {
-        text: '❌',
-        key: msg.key
-      }
-    })
-
-    await sock.sendMessage(from, {
-      text: `❌ Error:\n${err.message}`
+      text:
+`> Failed: ${err.message}`
     }, { quoted: msg })
 
+    /*
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━
+    CLEANUP
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━
+    */
+
+    try {
+
+      if (
+        filePath &&
+        fs.existsSync(filePath)
+      ) {
+
+        fs.unlinkSync(filePath)
+
+      }
+
+    } catch {}
+
   }
-
-}
-
-function formatDuration(seconds) {
-
-  seconds = Number(seconds)
-
-  const h = Math.floor(seconds / 3600)
-  const m = Math.floor((seconds % 3600) / 60)
-  const s = Math.floor(seconds % 60)
-
-  if (h > 0) {
-    return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
-  }
-
-  return `${m}:${s.toString().padStart(2, '0')}`
 
 }
