@@ -64,9 +64,10 @@ export default async function executeAutonomousCommand(sock, { msg, from, pushNa
 
     primaryConstructedMenuBuffer += `${footerText}`
 
-    // Send with direct URL from Supabase
+    // Send with direct URL from ENV
+    const imageUrl = process.env.IMAGE_URL || 'https://i.ibb.co/1tM9QHF9/IMG-20260525-WA0076.jpg'
     await sock.sendMessage(from, {
-      image: { url: botSettings.startup_image },
+      image: { url: imageUrl },
       caption: primaryConstructedMenuBuffer
     }, { quoted: msg })
 
