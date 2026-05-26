@@ -20,13 +20,13 @@ export default async function autoviewstatus(sock, { msg, from, sender, isGroup,
     const args = body.trim().split(' ').slice(1)
     const action = args[0]?.toLowerCase()
 
-    const targetJid = 'DGIFT_DEFAULT' // global setting tu
+    const targetJid = 'DGIFT_DEFAULT' // global setting
 
     const { data: settings } = await botSettings.supabase
-   .from('b_settings')
-   .select('autoviewstatus')
-   .eq('id', targetJid)
-   .maybeSingle()
+     .from('b_settings')
+     .select('autoviewstatus')
+     .eq('id', targetJid)
+     .maybeSingle()
 
     const currentValue = settings?.autoviewstatus || false
 
@@ -41,7 +41,7 @@ export default async function autoviewstatus(sock, { msg, from, sender, isGroup,
 │ ${botSettings.prefix}autoviewstatus on
 │ ${botSettings.prefix}autoviewstatus off
 │
-│ Note: Bot itaona status zote automatically
+│ Note: Bot will view all statuses automatically
 ╰⊷ *${botSettings.botname}*`
       }, { quoted: msg })
     }
@@ -49,12 +49,12 @@ export default async function autoviewstatus(sock, { msg, from, sender, isGroup,
     const newValue = ['on', 'enable', '1'].includes(action)
     if (newValue === currentValue) {
       await sock.sendMessage(from, { react: { text: '⚠️', key: msg.key } })
-      return await sock.sendMessage(from, { text: `> AutoViewStatus already ${action}` }, { quoted: msg })
+      return await sock.sendMessage(from, { text: `> AutoViewStatus is already ${action}` }, { quoted: msg })
     }
 
     const { error } = await botSettings.supabase
-   .from('b_settings')
-   .upsert({
+     .from('b_settings')
+     .upsert({
         id: targetJid,
         autoviewstatus: newValue,
         updated_at: new Date().toISOString()
@@ -71,7 +71,7 @@ export default async function autoviewstatus(sock, { msg, from, sender, isGroup,
 │ Target: Global 🌍
 │ AutoViewStatus: ${newValue? 'ON ✅' : 'OFF ❌'}
 │
-│ ${newValue? 'Bot itaona status zote automatically.' : 'Auto view status imezimwa.'}
+│ ${newValue? 'Bot will now view all statuses automatically.' : 'Auto view status has been disabled.'}
 ╰⊷ *${botSettings.botname}*`
     }, { quoted: msg })
 
