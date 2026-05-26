@@ -1,10 +1,4 @@
-import { createClient } from '@supabase/supabase-js'
-
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_KEY
-)
-
+// commands/settings/autotyping.js
 export const name = 'autotyping'
 export const alias = ['autotype', 'typingon']
 export const category = 'Settings'
@@ -12,6 +6,10 @@ export const desc = 'Toggle auto typing presence on/off'
 
 export default async function autotyping(sock, { msg, from, sender, isGroup, isAdmin }, botSettings) {
   try {
+    if (!botSettings.supabase) {
+      return sock.sendMessage(from, { text: '> Database connection not ready.' }, { quoted: msg })
+    }
+
     const isOwner = sender === botSettings.owner_number + '@s.whatsapp.net'
     if (!isOwner && (!isGroup ||!isAdmin)) {
       await sock.sendMessage(from, { react: { text: '❌', key: msg.key } })
@@ -25,11 +23,11 @@ export default async function autotyping(sock, { msg, from, sender, isGroup, isA
 
     const targetJid = mode === 'group' && isGroup? from : 'DGIFT_DEFAULT'
 
-    const { data: settings } = await supabase
-     .from('b_settings')
-     .select('autopresencecomposing')
-     .eq('id', targetJid)
-     .maybeSingle()
+    const { data: settings } = await botSettings.supabase
+  .from('b_settings')
+  .select('autopresencecomposing')
+  .eq('id', targetJid)
+  .maybeSingle()
 
     const currentValue = settings?.autopresencecomposing || false
 
@@ -54,16 +52,16 @@ export default async function autotyping(sock, { msg, from, sender, isGroup, isA
       return await sock.sendMessage(from, { text: `> AutoTyping is already ${action}` }, { quoted: msg })
     }
 
-    const { error } = await supabase
-     .from('b_settings')
-     .upsert(
-        {
-          id: targetJid,
-          autopresencecomposing: newValue,
-          updated_at: new Date().toISOString()
-        },
-        { onConflict: 'id' }
-      )
+    const { error } = await botSettings.supabase
+  .from('b_settings')
+  .upsert(
+      {
+        id: targetJid,
+        autopresencecomposing: newValue,
+        updated_at: new Date().toISOString()
+      },
+      { onConflict: 'id' }
+    )
 
     if (error) {
       await sock.sendMessage(from, { react: { text: '❌', key: msg.key } })
