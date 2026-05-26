@@ -1,10 +1,4 @@
-import { createClient } from '@supabase/supabase-js'
-
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_KEY
-)
-
+// commands/settings/autoread.js
 export const name = 'autoread'
 export const alias = ['autord', 'readon']
 export const category = 'Settings'
@@ -12,6 +6,10 @@ export const desc = 'Toggle auto read messages on/off'
 
 export default async function autoread(sock, { msg, from, sender, isGroup, isAdmin }, botSettings) {
   try {
+    if (!botSettings.supabase) {
+      return sock.sendMessage(from, { text: '> Database connection not ready.' }, { quoted: msg })
+    }
+
     const isOwner = sender === botSettings.owner_number + '@s.whatsapp.net'
     if (!isOwner && (!isGroup ||!isAdmin)) {
       await sock.sendMessage(from, { react: { text: '❌', key: msg.key } })
@@ -25,11 +23,11 @@ export default async function autoread(sock, { msg, from, sender, isGroup, isAdm
 
     const targetJid = mode === 'group' && isGroup? from : 'DGIFT_DEFAULT'
 
-    const { data: settings } = await supabase
-    .from('b_settings')
-    .select('autoread')
-    .eq('id', targetJid)
-    .maybeSingle()
+    const { data: settings } = await botSettings.supabase
+   .from('b_settings')
+   .select('autoread')
+   .eq('id', targetJid)
+   .maybeSingle()
 
     const currentValue = settings?.autoread || false
 
@@ -59,9 +57,9 @@ export default async function autoread(sock, { msg, from, sender, isGroup, isAdm
       return await sock.sendMessage(from, { text: `> AutoRead is already ${action}` }, { quoted: msg })
     }
 
-    const { error } = await supabase
-    .from('b_settings')
-    .upsert(
+    const { error } = await botSettings.supabase
+   .from('b_settings')
+   .upsert(
         {
           id: targetJid,
           autoread: newValue,
