@@ -1,21 +1,19 @@
-import { createClient } from '@supabase/supabase-js'
-
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_KEY
-)
-
+// commands/settings/antistatusmention.js
 export const name = 'antistatusmention'
 export const alias = ['antistatus', 'nostatusmention']
 export const category = 'Settings'
 export const desc = 'Toggle status mention blocker on/off'
 
-export default async function antistatusmention(sock, { msg, from, sender, isGroup, isAdmin }, botSettings) {
+export default async function antistatusmention(sock, { msg, from, sender, isGroup }, botSettings) {
   try {
+    if (!botSettings.supabase) {
+      return sock.sendMessage(from, { text: '> Database connection not ready.' }, { quoted: msg })
+    }
+
     const isOwner = sender === botSettings.owner_number + '@s.whatsapp.net'
-    if (!isOwner && (!isGroup ||!isAdmin)) {
+    if (!isOwner) {
       await sock.sendMessage(from, { react: { text: '❌', key: msg.key } })
-      return await sock.sendMessage(from, { text: '> Admin only command.' }, { quoted: msg })
+      return await sock.sendMessage(from, { text: '> Owner only command.' }, { quoted: msg })
     }
 
     const body = msg.message?.conversation || msg.message?.extendedTextMessage?.text || ''
@@ -25,11 +23,11 @@ export default async function antistatusmention(sock, { msg, from, sender, isGro
 
     const targetJid = mode === 'group' && isGroup? from : 'DGIFT_DEFAULT'
 
-    const { data: settings } = await supabase
-    .from('b_settings')
-    .select('antistatusmention')
-    .eq('id', targetJid)
-    .maybeSingle()
+    const { data: settings } = await botSettings.supabase
+   .from('b_settings')
+   .select('antistatusmention')
+   .eq('id', targetJid)
+   .maybeSingle()
 
     const currentValue = settings?.antistatusmention || false
 
@@ -42,14 +40,15 @@ export default async function antistatusmention(sock, { msg, from, sender, isGro
 │
 │ Usage:
 │ ${botSettings.prefix}antistatusmention on global
+│ ${botSettings.prefix}antistatusmention off group
 ╰⊷ *${botSettings.botname}*`
       }, { quoted: msg })
     }
 
     const newValue = ['on', 'enable', '1'].includes(action)
-    const { error } = await supabase
-    .from('b_settings')
-    .upsert({
+    const { error } = await botSettings.supabase
+   .from('b_settings')
+   .upsert({
         id: targetJid,
         antistatusmention: newValue,
         updated_at: new Date().toISOString()
@@ -64,6 +63,7 @@ export default async function antistatusmention(sock, { msg, from, sender, isGro
     await sock.sendMessage(from, {
       text: `╭─⌈ 🚫 *Settings Updated* ⌋
 │ Status: ${newValue? 'ON ✅' : 'OFF ❌'}
+│ Target: ${targetJid === 'DGIFT_DEFAULT'? 'Global' : 'Group'}
 ╰⊷ *${botSettings.botname}*`
     }, { quoted: msg })
 
