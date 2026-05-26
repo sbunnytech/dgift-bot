@@ -1,4 +1,4 @@
-import { supabase } from '../lib/supabase.js'
+// observers/antidelete.js
 import { downloadMediaMessage } from '@whiskeysockets/baileys'
 
 const messageCache = new Map()
@@ -16,30 +16,31 @@ export default async function antidelete(sock, { msg, from, sender, isGroup, isB
       const deletedMsg = messageCache.get(deletedKey.id)
       if (!deletedMsg) return
 
+      if (!botSettings?.supabase) return
+
       const groupJid = deletedMsg.key.remoteJid
       const isGroupMsg = groupJid.endsWith('@g.us')
       const targetJid = isGroupMsg? groupJid : 'global'
 
       // 2. CHECK SETTINGS FROM b_settings - NO HARDCODE
-      // Priority: group settings > global settings
       let settings = botSettings
 
       if (!settings ||!settings.antidelete) {
-        const { data: dbSettings } = await supabase
-         .from('b_settings')
-         .select('*')
-         .eq('id', targetJid)
-         .maybeSingle()
+        const { data: dbSettings } = await botSettings.supabase
+        .from('b_settings')
+        .select('*')
+        .eq('id', targetJid)
+        .maybeSingle()
 
         settings = dbSettings || botSettings
 
         // If still no group setting, check global
         if ((!settings ||!settings.antidelete) && isGroupMsg) {
-          const { data: globalSettings } = await supabase
-           .from('b_settings')
-           .select('*')
-           .eq('id', 'DGIFT_DEFAULT')
-           .maybeSingle()
+          const { data: globalSettings } = await botSettings.supabase
+          .from('b_settings')
+          .select('*')
+          .eq('id', 'DGIFT_DEFAULT')
+          .maybeSingle()
           settings = globalSettings
         }
       }
@@ -77,7 +78,7 @@ export default async function antidelete(sock, { msg, from, sender, isGroup, isB
       }
 
       // 5. SAVE TO SUPABASE
-      await supabase.from('deleted_messages').insert({
+      await botSettings.supabase.from('deleted_messages').insert({
         message_id: deletedKey.id,
         group_jid: isGroupMsg? groupJid : null,
         sender_jid: originalSender,
@@ -89,10 +90,10 @@ export default async function antidelete(sock, { msg, from, sender, isGroup, isB
       })
 
       // Auto clean old records
-      await supabase
-       .from('deleted_messages')
-       .delete()
-       .lt('deleted_at', new Date(Date.now() - AUTO_CLEAN_DAYS * 86400000).toISOString())
+      await botSettings.supabase
+      .from('deleted_messages')
+      .delete()
+      .lt('deleted_at', new Date(Date.now() - AUTO_CLEAN_DAYS * 86400000).toISOString())
 
       // 6. BUILD RECOVERY MESSAGE - USE b_settings DATA
       const brandName = settings.brand_name || settings.botname || 'Bot'
