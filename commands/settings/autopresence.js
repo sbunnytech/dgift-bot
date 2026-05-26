@@ -1,4 +1,9 @@
-import { supabase } from '../../lib/supabase.js'
+import { createClient } from '@supabase/supabase-js'
+
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_KEY
+)
 
 export const name = 'autotyping'
 export const alias = ['autotype', 'typingon']
@@ -19,6 +24,7 @@ export default async function autotyping(sock, { msg, from, sender, isGroup, isA
     const mode = args[1]?.toLowerCase()
 
     const targetJid = mode === 'group' && isGroup? from : 'DGIFT_DEFAULT'
+
     const { data: settings } = await supabase
      .from('b_settings')
      .select('autopresencecomposing')
@@ -42,13 +48,26 @@ export default async function autotyping(sock, { msg, from, sender, isGroup, isA
     }
 
     const newValue = ['on', 'enable', '1'].includes(action)
+
+    if (newValue === currentValue) {
+      await sock.sendMessage(from, { react: { text: '⚠️', key: msg.key } })
+      return await sock.sendMessage(from, { text: `> AutoTyping is already ${action}` }, { quoted: msg })
+    }
+
     const { error } = await supabase
      .from('b_settings')
-     .upsert({ id: targetJid, autopresencecomposing: newValue, updated_at: new Date().toISOString() }, { onConflict: 'id' })
+     .upsert(
+        {
+          id: targetJid,
+          autopresencecomposing: newValue,
+          updated_at: new Date().toISOString()
+        },
+        { onConflict: 'id' }
+      )
 
     if (error) {
       await sock.sendMessage(from, { react: { text: '❌', key: msg.key } })
-      return await sock.sendMessage(from, { text: '> Database error.' }, { quoted: msg })
+      return await sock.sendMessage(from, { text: `> Database error: ${error.message}` }, { quoted: msg })
     }
 
     await sock.sendMessage(from, { react: { text: newValue? '✅' : '❌', key: msg.key } })
@@ -62,6 +81,6 @@ export default async function autotyping(sock, { msg, from, sender, isGroup, isA
   } catch (err) {
     console.error(`[AUTOTYPING CMD ERROR]`, err.message)
     await sock.sendMessage(from, { react: { text: '❌', key: msg.key } })
-    await sock.sendMessage(from, { text: '> Failed. Check database.' }, { quoted: msg })
+    await sock.sendMessage(from, { text: '> Failed. Check database connection.' }, { quoted: msg })
   }
 }
