@@ -14,33 +14,72 @@ const emojis = [
 
 export default async function autolikestatus(sock, { msg, from, sender }, botSettings) {
   try {
-    if (!botSettings?.supabase) return
-    if (from !== 'status@broadcast') return // only status
-    if (msg.key.fromMe) return // skip my own status
+    // Quick checks first - no DB call if not needed
+    if (!msg?.key) return
+    if (from !== 'status@broadcast') return
+    if (msg.key.fromMe) return
+    if (!msg.key.id) return
 
-    // Get settings
-    const { data: settings } = await botSettings.supabase
-      .from('b_settings')
-      .select('autolikestatus, botname, brand_name')
-      .eq('id', 'DGIFT_DEFAULT')
-      .maybeSingle()
+    let autolikeEnabled = false
+    let instanceId = 'DGIFT_DEFAULT'
 
-    if (!settings?.autolikestatus) return
+    try {
+      instanceId = botSettings?.instance_id || 'DGIFT_DEFAULT'
+      
+      if (botSettings?.supabase) {
+        const { data: settings, error } = await botSettings.supabase
+          .from('b_settings')
+          .select('autolikestatus')
+          .eq('id', instanceId)
+          .maybeSingle()
 
-    const statusId = msg.key.id
-    if (!statusId) return
+        if (!error && settings) {
+          autolikeEnabled = !!settings.autolikestatus
+        }
+      }
+    } catch (dbErr) {
+      console.log('[AUTOLIKESTATUS] DB check failed, skipping:', dbErr.message)
+      return
+    }
+
+    if (!autolikeEnabled) return
 
     // Pick random emoji
-    const emoji = emojis[Math.floor(Math.random() * emojis.length)]
+    let emoji = '❤️'
+    try {
+      emoji = emojis[Math.floor(Math.random() * emojis.length)]
+    } catch {
+      emoji = '❤️'
+    }
 
-    // Send reaction
-    await sock.sendMessage(from, {
-      react: { text: emoji, key: msg.key }
-    })
+    // Send reaction with retry logic
+    let reacted = false
+    try {
+      await sock.sendMessage(from, {
+        react: { text: emoji, key: msg.key }
+      })
+      reacted = true
+    } catch (err1) {
+      console.log('[AUTOLIKESTATUS] First attempt failed:', err1.message)
+      
+      // Retry once after 2s delay
+      try {
+        await new Promise(r => setTimeout(r, 2000))
+        await sock.sendMessage(from, {
+          react: { text: emoji, key: msg.key }
+        })
+        reacted = true
+      } catch (err2) {
+        console.log('[AUTOLIKESTATUS] Retry failed:', err2.message)
+      }
+    }
 
-    console.log(`[AUTOLIKESTATUS] Liked status from ${sender} with ${emoji}`)
+    if (reacted) {
+      console.log(`[AUTOLIKESTATUS] Liked status from ${sender || 'unknown'} with ${emoji}`)
+    }
 
   } catch (err) {
-    console.log('[AUTOLIKESTATUS ERROR]', err.message)
+    // Never let observer crash the bot
+    console.log('[AUTOLIKESTATUS ERROR]', err?.message || err)
   }
 }
