@@ -1,4 +1,9 @@
-import { supabase } from '../../lib/supabase.js'
+import { createClient } from '@supabase/supabase-js'
+
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_KEY
+)
 
 export const name = 'autoread'
 export const alias = ['autord', 'readon']
@@ -19,11 +24,12 @@ export default async function autoread(sock, { msg, from, sender, isGroup, isAdm
     const mode = args[1]?.toLowerCase()
 
     const targetJid = mode === 'group' && isGroup? from : 'DGIFT_DEFAULT'
+
     const { data: settings } = await supabase
-     .from('b_settings')
-     .select('autoread')
-     .eq('id', targetJid)
-     .maybeSingle()
+    .from('b_settings')
+    .select('autoread')
+    .eq('id', targetJid)
+    .maybeSingle()
 
     const currentValue = settings?.autoread || false
 
@@ -50,16 +56,23 @@ export default async function autoread(sock, { msg, from, sender, isGroup, isAdm
     const newValue = ['on', 'enable', '1'].includes(action)
     if (newValue === currentValue) {
       await sock.sendMessage(from, { react: { text: '⚠️', key: msg.key } })
-      return await sock.sendMessage(from, { text: `> AutoRead already ${action}` }, { quoted: msg })
+      return await sock.sendMessage(from, { text: `> AutoRead is already ${action}` }, { quoted: msg })
     }
 
     const { error } = await supabase
-     .from('b_settings')
-     .upsert({ id: targetJid, autoread: newValue, updated_at: new Date().toISOString() }, { onConflict: 'id' })
+    .from('b_settings')
+    .upsert(
+        {
+          id: targetJid,
+          autoread: newValue,
+          updated_at: new Date().toISOString()
+        },
+        { onConflict: 'id' }
+      )
 
     if (error) {
       await sock.sendMessage(from, { react: { text: '❌', key: msg.key } })
-      return await sock.sendMessage(from, { text: '> Database error.' }, { quoted: msg })
+      return await sock.sendMessage(from, { text: `> Database error: ${error.message}` }, { quoted: msg })
     }
 
     await sock.sendMessage(from, { react: { text: newValue? '✅' : '❌', key: msg.key } })
