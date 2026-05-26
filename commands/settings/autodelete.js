@@ -4,56 +4,64 @@ export const alias = ['antidl', 'nodelete']
 export const category = 'Settings'
 export const desc = 'Toggle anti delete on/off'
 
-export default async function antidelete(sock, { msg, from, sender, isGroup, isAdmin }, botSettings) {
+export default async function antidelete(sock, { msg, from, sender }, botSettings) {
   try {
+    // Angalia kama database ipo
     if (!botSettings.supabase) {
       return sock.sendMessage(from, { text: '> Database connection not ready.' }, { quoted: msg })
     }
 
+    // Ruhusu owner pekee
     const isOwner = sender === botSettings.owner_number + '@s.whatsapp.net'
-    if (!isOwner && (!isGroup ||!isAdmin)) {
+    if (!isOwner) {
       await sock.sendMessage(from, { react: { text: '❌', key: msg.key } })
-      return await sock.sendMessage(from, { text: '> Admin only command.' }, { quoted: msg })
+      return await sock.sendMessage(from, { text: '> Owner only command.' }, { quoted: msg })
     }
 
     const body = msg.message?.conversation || msg.message?.extendedTextMessage?.text || ''
     const args = body.trim().split(' ').slice(1)
     const action = args[0]?.toLowerCase()
-    const mode = args[1]?.toLowerCase()
 
-    const targetJid = mode === 'group' && isGroup? from : 'DGIFT_DEFAULT'
+    const targetJid = 'DGIFT_DEFAULT' // global setting tu
 
+    // Chukua status ya sasa
     const { data: settings } = await botSettings.supabase
-  .from('b_settings')
-  .select('antidelete')
-  .eq('id', targetJid)
-  .maybeSingle()
+ .from('b_settings')
+ .select('antidelete')
+ .eq('id', targetJid)
+ .maybeSingle()
 
     const currentValue = settings?.antidelete || false
 
+    // Onyesha status kama hakuna action
     if (!action) {
       await sock.sendMessage(from, { react: { text: '🗑️', key: msg.key } })
       return await sock.sendMessage(from, {
         text: `╭─⌈ 🗑️ *AntiDelete Control* ⌋
 │ Status: ${currentValue? 'ON ✅' : 'OFF ❌'}
-│ Target: ${targetJid === 'DGIFT_DEFAULT'? 'Global' : 'Group'}
+│ Target: Global
 │
 │ Usage:
-│ ${botSettings.prefix}antidelete on global
-│ ${botSettings.prefix}antidelete off group
+│ ${botSettings.prefix}antidelete on
+│ ${botSettings.prefix}antidelete off
+│
+│ Note: Bot will recover deleted messages
 ╰⊷ *${botSettings.botname}*`
       }, { quoted: msg })
     }
 
     const newValue = ['on', 'enable', '1'].includes(action)
+
+    // Angalia kama tayari iko hivyo
     if (newValue === currentValue) {
       await sock.sendMessage(from, { react: { text: '⚠️', key: msg.key } })
-      return await sock.sendMessage(from, { text: `> AntiDelete already ${action}` }, { quoted: msg })
+      return await sock.sendMessage(from, { text: `> AntiDelete is already ${action}` }, { quoted: msg })
     }
 
+    // Sasisha database
     const { error } = await botSettings.supabase
-  .from('b_settings')
-  .upsert({
+ .from('b_settings')
+ .upsert({
         id: targetJid,
         antidelete: newValue,
         updated_at: new Date().toISOString()
@@ -64,11 +72,16 @@ export default async function antidelete(sock, { msg, from, sender, isGroup, isA
       return await sock.sendMessage(from, { text: `> Database error: ${error.message}` }, { quoted: msg })
     }
 
+    // Sasisha live memory
+    botSettings.antidelete = newValue
+
     await sock.sendMessage(from, { react: { text: newValue? '✅' : '❌', key: msg.key } })
     await sock.sendMessage(from, {
       text: `╭─⌈ 🗑️ *Settings Updated* ⌋
-│ Target: ${targetJid === 'DGIFT_DEFAULT'? 'Global 🌍' : 'Group'}
+│ Target: Global 🌍
 │ AntiDelete: ${newValue? 'ON ✅' : 'OFF ❌'}
+│
+│ ${newValue? 'Deleted messages will be recovered.' : 'Message recovery is disabled.'}
 ╰⊷ *${botSettings.botname}*`
     }, { quoted: msg })
 
