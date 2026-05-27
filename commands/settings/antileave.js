@@ -1,6 +1,6 @@
 export const name = 'antileave'
 export const alias = ['no-leave', 'forcejoin']
-export const category = 'Group'
+export const category = 'Settings'
 export const desc = 'Toggle antileave on/off for this group'
 
 export default async function antileave(sock, { msg, from, sender }, botSettings) {
