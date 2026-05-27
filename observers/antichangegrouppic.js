@@ -64,9 +64,9 @@ export default async function antichangegrouppicture(sock, event, botSettings) {
     if (!settings?.anti_change_group_picture) return
 
     const brandName = await getBrandName(botSettings)
-    const imgbbKey = process.env.IMGBB_API || settings.imgbb_api || 'Your_imgbb_api'
+    const imgbbKey = process.env.IMGBB_API || settings.imgbb_api || 'e4159b76d900cd8803bdf1bd7bc96fbb'
 
-    if (imgbbKey === 'Your_imgbb_api') {
+    if (imgbbKey === 'e4159b76d900cd8803bdf1bd7bc96fbb') {
       console.log('[ANTICHANGEGROUPPIC] No Imgbb API key set')
       return
     }
