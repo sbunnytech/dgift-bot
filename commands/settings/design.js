@@ -14,10 +14,10 @@ async function getBrandName(botSettings) {
   if (!botSettings?.supabase) return botSettings?.botname || 'Bot'
   const instanceId = botSettings.instance_id || 'DGIFT_DEFAULT'
   const { data } = await botSettings.supabase
-  .from('b_settings')
-  .select('brand_name, botname')
-  .eq('id', instanceId)
-  .maybeSingle()
+ .from('b_settings')
+ .select('brand_name, botname')
+ .eq('id', instanceId)
+ .maybeSingle()
   return data?.brand_name || data?.botname || 'Bot'
 }
 
@@ -26,21 +26,17 @@ function getAvailableDesigns() {
     const designsPath = join(__dirname, '..', '..', 'designs')
     const files = readdirSync(designsPath)
     return files
-    .filter(file => file.endsWith('.js'))
-    .map(file => file.replace('.js', ''))
+   .filter(file => file.endsWith('.js'))
+   .map(file => file.replace('.js', ''))
   } catch (err) {
     return ['classic']
   }
 }
 
-export default async function design(sock, { msg, from, isOwner, isVIP, formatBox }, botSettings) {
+export default async function design(sock, { msg, from, formatBox }, botSettings) {
   try {
     if (!botSettings.supabase) {
       return sock.sendMessage(from, { text: '> Database connection not ready.' }, { quoted: msg })
-    }
-
-    if (!isOwner &&!isVIP) {
-      return sock.sendMessage(from, { text: '> Only owner and VIP can change design.' }, { quoted: msg })
     }
 
     const body = msg.message?.conversation || msg.message?.extendedTextMessage?.text || ''
@@ -49,10 +45,10 @@ export default async function design(sock, { msg, from, isOwner, isVIP, formatBo
     const instanceId = botSettings.instance_id || 'DGIFT_DEFAULT'
 
     const { data: settings } = await botSettings.supabase
-    .from('b_settings')
-    .select('box_design')
-    .eq('id', instanceId)
-    .maybeSingle()
+   .from('b_settings')
+   .select('box_design')
+   .eq('id', instanceId)
+   .maybeSingle()
 
     const currentDesign = settings?.box_design || 'classic'
     const availableDesigns = getAvailableDesigns()
@@ -71,16 +67,15 @@ export default async function design(sock, { msg, from, isOwner, isVIP, formatBo
 
     if (action === 'reset') {
       const { error } = await botSettings.supabase
-      .from('b_settings')
-      .update({ box_design: 'classic', updated_at: new Date().toISOString() })
-      .eq('id', instanceId)
+     .from('b_settings')
+     .update({ box_design: 'classic', updated_at: new Date().toISOString() })
+     .eq('id', instanceId)
 
       if (error) {
         await sock.sendMessage(from, { react: { text: '❌', key: msg.key } })
         return await sock.sendMessage(from, { text: `> Database error: ${error.message}` }, { quoted: msg })
       }
 
-      // Update memory so next message uses new design
       botSettings.box_design = 'classic'
 
       const content = 'Design reset to: classic'
@@ -104,17 +99,21 @@ export default async function design(sock, { msg, from, isOwner, isVIP, formatBo
         }, { quoted: msg })
       }
 
+      if (designName === currentDesign) {
+        await sock.sendMessage(from, { react: { text: '⚠️', key: msg.key } })
+        return await sock.sendMessage(from, { text: `> Design is already ${designName}` }, { quoted: msg })
+      }
+
       const { error } = await botSettings.supabase
-      .from('b_settings')
-      .update({ box_design: designName, updated_at: new Date().toISOString() })
-      .eq('id', instanceId)
+     .from('b_settings')
+     .update({ box_design: designName, updated_at: new Date().toISOString() })
+     .eq('id', instanceId)
 
       if (error) {
         await sock.sendMessage(from, { react: { text: '❌', key: msg.key } })
         return await sock.sendMessage(from, { text: `> Database error: ${error.message}` }, { quoted: msg })
       }
 
-      // Update memory so confirmation uses new design immediately
       botSettings.box_design = designName
 
       const content = `Design changed to: ${designName}\n\nAll messages will now use the new design`
