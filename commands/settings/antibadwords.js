@@ -1,6 +1,6 @@
 export const name = 'antibadword'
 export const alias = ['badwordfilter', 'antislur']
-export const category = 'Group'
+export const category = 'Settings'
 export const desc = 'Toggle antibadword on/off'
 
 export default async function antibadword(sock, { msg, from, sender }, botSettings) {
