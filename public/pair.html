@@ -1,759 +1,666 @@
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title id="pageTitle">Bunny Bot - Terminal Pair Management</title>
+<meta name="description" id="pageDesc" content="Pair your WhatsApp to this bot. Fast, secure, and reliable WhatsApp bot with QR and Pair Code support.">
+<meta name="theme-color" content="#00ff88">
 
-  <title id="pageTitle">BUNNY TECH - Advanced Terminal Pair Management</title>
-  <meta name="description" id="pageDesc" content="Pair your WhatsApp to BUNNY TECH. Fast, secure, and reliable WhatsApp bot with QR and Pair Code support.">
-  <meta name="theme-color" content="#00f0ff">
+<meta property="og:type" content="website">
+<meta property="og:title" id="ogTitle" content="Bunny Bot - Terminal Pair Management">
+<meta property="og:description" id="ogDesc" content="Pair your WhatsApp to this bot. Fast, secure, and reliable WhatsApp bot.">
+<meta property="og:image" id="ogImage" content="">
 
-  <meta property="og:type" content="website">
-  <meta property="og:title" id="ogTitle" content="BUNNY TECH - Advanced Terminal Pair Management">
-  <meta property="og:description" id="ogDesc" content="Pair your WhatsApp to BUNNY TECH. Fast, secure, and reliable WhatsApp bot.">
-  <meta property="og:image" id="ogImage" content="">
+<meta property="twitter:card" content="summary_large_image">
+<meta property="twitter:title" id="twTitle" content="Bunny Bot - Terminal Pair Management">
+<meta property="twitter:description" id="twDesc" content="Pair your WhatsApp to this bot. Fast, secure, and reliable WhatsApp bot.">
+<meta property="twitter:image" id="twImage" content="">
 
-  <meta property="twitter:card" content="summary_large_image">
-  <meta property="twitter:title" id="twTitle" content="BUNNY TECH - Advanced Terminal Pair Management">
-  <meta property="twitter:description" id="twDesc" content="Pair your WhatsApp to BUNNY TECH. Fast, secure, and reliable WhatsApp bot.">
-  <meta property="twitter:image" id="twImage" content="">
+<link rel="icon" id="favicon" href="">
+<script src="https://unpkg.com/lucide@latest"></script>
 
-  <link rel="icon" id="favicon" href="">
-
-  <script src="https://unpkg.com/lucide@latest"></script>
-
-  <style>
-    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap');
-
-    :root[data-theme="dark"] {
-      --bg-base: #06070d;
-      --glass-bg: rgba(13, 16, 31, 0.65);
-      --glass-border: rgba(255, 255, 255, 0.08);
-      --text-main: #f1f5f9;
-      --text-muted: #94a3b8;
-      --neon-cyan: #00f0ff;
-      --neon-purple: #9d4edd;
-      --neon-pink: #ff007f;
-      --neon-yellow: #ffea00;
-      --neon-green: #39ff14;
-      --neon-black: #000;
-      --shadow-intensity: rgba(0, 240, 255, 0.15);
-    }
-
-    :root[data-theme="light"] {
-      --bg-base: #f8fafc;
-      --glass-bg: rgba(255, 255, 255, 0.75);
-      --glass-border: rgba(15, 23, 42, 0.08);
-      --text-main: #0f172a;
-      --text-muted: #64748b;
-      --neon-cyan: #0099ff;
-      --neon-purple: #7b2cbf;
-      --neon-pink: #d80064;
-      --neon-yellow: #e5b800;
-      --neon-green: #17b90f;
-      --neon-black: #ffffff;
-      --shadow-intensity: rgba(123, 44, 191, 0.1);
-    }
+<style>
+  :root {
+    --black: #0a0a0a;
+    --dark-black: #050505;
+    --glass: rgba(18, 22, 28, 0.45);
+    --green: #00ff88;
+    --purple: #8b5cf6;
+    --gold: #facc15;
+    --light-green: #4ade80;
+    --text: #f5f5f5;
+    --muted: #a3a3a3;
+  }
 
     * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-      font-family: 'Plus Jakarta Sans', sans-serif;
-    }
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
 
-    body {
-      background: var(--bg-base);
-      color: var(--text-main);
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      padding: 20px;
-      overflow-x: hidden;
-      position: relative;
-    }
+  body {
+    background: var(--black);
+    color: var(--text);
+    overflow-x: hidden;
+  }
 
-    body::before, body::after {
-      content: '';
-      position: absolute;
-      width: 350px;
-      height: 350px;
-      border-radius: 50%;
-      z-index: -1;
-      filter: blur(120px);
-      opacity: 0.4;
-      animation: pulseGlow 10s infinite alternate;
-    }
-    body::before {
-      top: 10%;
-      left: 10%;
-      background: linear-gradient(45deg, var(--neon-purple), var(--neon-pink));
-    }
-    body::after {
-      bottom: 10%;
-      right: 10%;
-      background: linear-gradient(45deg, var(--neon-cyan), var(--neon-yellow));
-    }
+  body::before {
+    content: '';
+    position: fixed;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: radial-gradient(circle at 20% 20%, rgba(139,92,246,0.25), transparent 40%),
+                radial-gradient(circle at 80% 80%, rgba(0,255,136,0.2), transparent 40%),
+                radial-gradient(circle at 50% 50%, rgba(250,204,21,0.18), transparent 50%);
+    filter: blur(100px);
+    z-index: -1;
+    animation: float 20s ease-in-out infinite;
+  }
 
-    @keyframes pulseGlow {
-      0% { transform: scale(1); opacity: 0.3; }
-      100% { transform: scale(1.2); opacity: 0.5; }
-    }
+  @keyframes float {
+    0%, 100% { transform: translate(0, 0) scale(1); }
+    50% { transform: translate(5%, 5%) scale(1.05); }
+  }
 
-    .loader-wrapper {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: var(--bg-base);
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      z-index: 9999;
-      transition: opacity 0.5s ease;
-    }
+  .glass {
+    background: var(--glass);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 28px;
+    box-shadow: 0 8px 40px rgba(0,0,0,0.6);
+    transition: all 0.4s ease;
+  }
 
-    .cyber-scanner {
-      position: relative;
-      width: 100px;
-      height: 100px;
-      border: 2px solid transparent;
-      border-radius: 50%;
-      border-top-color: var(--neon-cyan);
-      border-bottom-color: var(--neon-pink);
-      animation: rotateScan 1.5s linear infinite;
-    }
+  .glass:hover {
+    border: 1px solid rgba(0,255,136,0.2);
+    box-shadow: 0 12px 50px rgba(0,0,0,0.8);
+    transform: translateY(-4px);
+  }
 
-    .cyber-scanner::before {
-      content: '';
-      position: absolute;
-      top: 8px;
-      left: 8px;
-      right: 8px;
-      bottom: 8px;
-      border: 2px solid transparent;
-      border-radius: 50%;
-      border-left-color: var(--neon-purple);
-      border-right-color: var(--neon-yellow);
-      animation: rotateScanReverse 1s linear infinite;
-    }
+  .glow-green { box-shadow: 0 0 30px rgba(0,255,136,0.35); }
+  .glow-purple { box-shadow: 0 0 30px rgba(139,92,246,0.35); }
+  .glow-gold { box-shadow: 0 0 30px rgba(250,204,21,0.35); }
 
-    .loader-text {
-      margin-top: 24px;
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 14px;
-      letter-spacing: 2px;
-      color: var(--neon-cyan);
-      text-shadow: 0 0 8px var(--neon-cyan);
-    }
+  .btn {
+    padding: 16px 36px;
+    border-radius: 50px;
+    border: none;
+    font-weight: 600;
+    font-size: 16px;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    text-decoration: none;
+    position: relative;
+    overflow: hidden;
+  }
 
-    @keyframes rotateScan {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
-    }
-    @keyframes rotateScanReverse {
-      0% { transform: rotate(360deg); }
-      100% { transform: rotate(0deg); }
-    }
+  .btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+    transition: 0.5s;
+  }
 
-    .utility-bar {
-      position: absolute;
-      top: 20px;
-      right: 20px;
-      display: flex;
-      gap: 12px;
-      z-index: 100;
-    }
+  .btn:hover::before {
+    left: 100%;
+  }
 
-    .utility-btn {
-      background: var(--glass-bg);
-      border: 1px solid var(--glass-border);
-      color: var(--text-main);
-      padding: 10px;
-      border-radius: 50%;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: all 0.3s ease;
-      backdrop-filter: blur(10px);
-    }
+  .btn-primary {
+    background: linear-gradient(135deg, var(--purple), var(--green));
+    color: var(--black);
+  }
 
-    .utility-btn:hover {
-      border-color: var(--neon-cyan);
-      box-shadow: 0 0 10px var(--neon-cyan);
-      transform: translateY(-2px);
-    }
+  .btn-primary:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 15px 40px rgba(139,92,246,0.5);
+  }
 
-    .container {
-      width: 100%;
-      max-width: 520px;
-      background: var(--glass-bg);
-      backdrop-filter: blur(20px);
-      -webkit-backdrop-filter: blur(20px);
-      border: 1px solid var(--glass-border);
-      border-radius: 24px;
-      padding: 40px;
-      box-shadow: 0 20px 50px 0 rgba(0, 0, 0, 0.3), inset 0 1px 2px var(--glass-border);
-      transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
-    }
+  .btn-secondary {
+    background: transparent;
+    border: 1px solid rgba(255,255,255,0.1);
+    color: var(--text);
+    width: 100%;
+  }
 
-    .hidden-stage {
-      display: none !important;
-      opacity: 0;
-      transform: translateY(20px);
-    }
+  .btn-secondary:hover {
+    background: rgba(255,255,255,0.05);
+    border-color: var(--green);
+    box-shadow: 0 0 20px rgba(0,255,136,0.3);
+  }
 
-    .header {
-      text-align: center;
-      margin-bottom: 28px;
-    }
+  .container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 20px;
+  }
 
-    .logo-frame {
-      width: 88px;
-      height: 88px;
-      border-radius: 50%;
-      margin: 0 auto 20px;
-      padding: 3px;
-      background: linear-gradient(135deg, var(--neon-cyan), var(--neon-purple), var(--neon-pink));
-      position: relative;
-      box-shadow: 0 0 20px var(--shadow-intensity);
-    }
+  /* Hero */
+  .hero {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 40px 20px;
+  }
 
-    .logo-frame img {
-      width: 100%;
-      height: 100%;
-      border-radius: 50%;
-      object-fit: cover;
-      background: var(--bg-base);
-    }
+  .hero h1 {
+    font-size: 48px;
+    line-height: 1.2;
+    margin-bottom: 20px;
+    background: linear-gradient(135deg, var(--green), var(--gold), var(--purple));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    animation: shimmer 3s linear infinite;
+    background-size: 200% 200%;
+  }
 
-    .header h1 {
-      font-size: 26px;
-      font-weight: 800;
-      letter-spacing: -0.5px;
-      margin-bottom: 8px;
-    }
+  @keyframes shimmer {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+  }
 
-    .header p {
-      color: var(--text-muted);
-      font-size: 15px;
-      line-height: 1.5;
-    }
+  .hero p {
+    font-size: 18px;
+    color: var(--muted);
+    margin-bottom: 40px;
+    max-width: 700px;
+    margin-left: auto;
+    margin-right: auto;
+  }
 
-    .instance-tag {
-      display: inline-block;
-      margin-top: 8px;
-      padding: 4px 12px;
-      background: rgba(139, 92, 246, 0.15);
-      border: 1px solid rgba(139, 92, 246, 0.3);
-      border-radius: 20px;
-      font-size: 11px;
-      font-family: 'JetBrains Mono', monospace;
-      color: var(--neon-purple);
-      letter-spacing: 1px;
-    }
+  .instance-tag {
+    display: inline-block;
+    margin: 20px auto;
+    padding: 6px 16px;
+    background: rgba(0,255,136,0.15);
+    border: 1px solid rgba(0,255,136,0.3);
+    border-radius: 20px;
+    font-size: 12px;
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--green);
+    letter-spacing: 1px;
+  }
 
-    .prose-manifest {
-      background: rgba(0, 0, 0, 0.2);
-      border-radius: 12px;
-      padding: 16px;
-      margin-bottom: 24px;
-      border-left: 3px solid var(--neon-purple);
-    }
+  /* Features */
+  .features {
+    padding: 80px 0;
+  }
 
-    .prose-manifest ul {
-      list-style: none;
-    }
+  .features h2 {
+    text-align: center;
+    font-size: 36px;
+    margin-bottom: 50px;
+    background: linear-gradient(135deg, var(--purple), var(--green));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
 
-    .prose-manifest li {
-      font-size: 13.5px;
-      color: var(--text-muted);
-      margin-bottom: 8px;
-      display: flex;
-      align-items: flex-start;
-      gap: 8px;
-    }
+  .feature-grid {
+    display: grid;
+    gap: 24px;
+  }
 
-    .prose-manifest li:last-child {
-      margin-bottom: 0;
-    }
+  .feature-card {
+    padding: 30px;
+    text-align: left;
+    position: relative;
+    overflow: hidden;
+  }
 
-    .prose-manifest i {
-      color: var(--neon-cyan);
-      flex-shrink: 0;
-      margin-top: 2px;
-    }
+  .feature-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    background: linear-gradient(90deg, var(--purple), var(--green), var(--gold));
+    transform: scaleX(0);
+    transition: transform 0.5s ease;
+  }
 
-    .status-badge {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 10px;
-      padding: 12px;
-      background: rgba(0, 0, 0, 0.25);
-      border-radius: 12px;
-      margin-bottom: 24px;
-      font-size: 13px;
-      font-family: 'JetBrains Mono', monospace;
-      border: 1px solid var(--glass-border);
-    }
+  .feature-card:hover::before {
+    transform: scaleX(1);
+  }
 
-    .status-pulse {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: var(--text-muted);
-      position: relative;
-    }
+  .feature-card h3 {
+    font-size: 22px;
+    margin-bottom: 12px;
+    color: var(--light-green);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
 
-    .status-pulse.connected {
-      background: var(--neon-green);
-      box-shadow: 0 0 10px var(--neon-green);
-    }
+  .feature-card p {
+    color: var(--muted);
+    line-height: 1.6;
+  }
 
-    .status-pulse.connected::after {
-      content: '';
-      position: absolute;
-      width: 100%;
-      height: 100%;
-      border-radius: 50%;
-      background: var(--neon-green);
-      transform: scale(1);
-      animation: ripple 1.2s infinite ease-out;
-    }
+  /* Pairing Section */
+  .pairing {
+    padding: 60px 0 120px;
+    display: none;
+  }
 
-    @keyframes ripple {
-      0% { transform: scale(1); opacity: 0.8; }
-      100% { transform: scale(2.5); opacity: 0; }
-    }
+  .pairing.active {
+    display: block;
+    animation: fadeIn 0.6s ease;
+  }
 
-    .qr-viewport {
-      background: rgba(0, 0, 0, 0.3);
-      padding: 24px;
-      border-radius: 16px;
-      margin-bottom: 20px;
-      text-align: center;
-      min-height: 260px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      border: 1px dashed var(--glass-border);
-      position: relative;
-    }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
 
-    .qr-viewport img {
-      max-width: 210px;
-      width: 100%;
-      border-radius: 12px;
-      background: white;
-      padding: 12px;
-      box-shadow: 0 0 25px rgba(255, 255, 255, 0.1);
-    }
+  .pairing-header {
+    text-align: center;
+    margin-bottom: 40px;
+  }
 
-    .qr-placeholder-text {
-      color: var(--text-muted);
-      font-size: 13.5px;
-      font-family: 'JetBrains Mono', monospace;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 12px;
-    }
+  .pairing-header h2 {
+    font-size: 32px;
+    margin-bottom: 10px;
+    background: linear-gradient(135deg, var(--gold), var(--green));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
 
-    .divider-pane {
-      display: flex;
-      align-items: center;
-      margin: 24px 0;
-      color: var(--text-muted);
-      font-size: 11px;
-      font-family: 'JetBrains Mono', monospace;
-      letter-spacing: 2px;
-    }
+  .pairing-header p {
+    color: var(--muted);
+  }
 
-    .divider-pane::before, .divider-pane::after {
-      content: '';
-      flex: 1;
-      height: 1px;
-      background: var(--glass-border);
-    }
+  .pairing-card {
+    max-width: 520px;
+    margin: 0 auto;
+    padding: 40px;
+  }
 
-    .divider-pane span {
-      padding: 0 16px;
-    }
+  .logo-frame {
+    width: 88px;
+    height: 88px;
+    border-radius: 50%;
+    margin: 0 auto 20px;
+    padding: 3px;
+    background: linear-gradient(135deg, var(--purple), var(--green), var(--gold));
+    position: relative;
+    box-shadow: 0 0 20px rgba(0,255,136,0.15);
+  }
 
-    .input-frame {
-      margin-bottom: 20px;
-    }
+  .logo-frame img {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    object-fit: cover;
+    background: var(--black);
+  }
 
-    .input-descriptor {
-      display: block;
-      margin-bottom: 8px;
-      font-size: 11px;
-      font-weight: 700;
-      color: var(--text-muted);
-      letter-spacing: 1.5px;
-      text-transform: uppercase;
-    }
+  .status-badge {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 14px;
+    background: rgba(0, 0, 0, 0.25);
+    border-radius: 12px;
+    margin-bottom: 24px;
+    font-size: 13px;
+    font-family: 'JetBrains Mono', monospace;
+    border: 1px solid rgba(255,255,255,0.06);
+  }
 
-    .input-wrapper-container {
-      position: relative;
-      display: flex;
-      align-items: center;
-    }
+  .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--muted);
+  }
 
-    .input-wrapper-container i {
-      position: absolute;
-      left: 14px;
-      color: var(--text-muted);
-      pointer-events: none;
-    }
+  .status-dot.connected {
+    background: var(--green);
+    box-shadow: 0 0 10px var(--green);
+    animation: pulse 2s infinite;
+  }
 
-    .input-wrapper-container input {
-      width: 100%;
-      padding: 14px 14px 14px 44px;
-      background: rgba(0, 0, 0, 0.2);
-      border: 1px solid var(--glass-border);
-      border-radius: 12px;
-      color: var(--text-main);
-      font-size: 15px;
-      font-family: 'JetBrains Mono', monospace;
-      outline: none;
-      transition: all 0.3s ease;
-    }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.6; transform: scale(1.2); }
+  }
 
-    .input-wrapper-container input:focus {
-      border-color: var(--neon-cyan);
-      box-shadow: 0 0 12px rgba(0, 240, 255, 0.2);
-      background: rgba(0, 0, 0, 0.35);
-    }
+  .qr-box {
+    background: rgba(0, 0, 0, 0.3);
+    padding: 24px;
+    border-radius: 16px;
+    margin-bottom: 20px;
+    text-align: center;
+    min-height: 260px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    border: 1px dashed rgba(255,255,255,0.06);
+  }
 
-    .cyber-btn {
-      width: 100%;
-      padding: 15px;
-      background: linear-gradient(135deg, var(--neon-purple), var(--neon-pink));
-      border: none;
-      border-radius: 12px;
-      color: white;
-      font-size: 15px;
-      font-weight: 700;
-      letter-spacing: 0.5px;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 10px;
-      transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
-      box-shadow: 0 4px 15px rgba(255, 0, 127, 0.2);
-    }
+  .qr-box img {
+    max-width: 210px;
+    width: 100%;
+    border-radius: 12px;
+    background: white;
+    padding: 12px;
+    box-shadow: 0 0 25px rgba(0,255,136,0.2);
+  }
 
-    .cyber-btn:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 6px 20px rgba(255, 0, 127, 0.4);
-      filter: brightness(1.1);
-    }
+  .divider {
+    display: flex;
+    align-items: center;
+    margin: 24px 0;
+    color: var(--muted);
+    font-size: 11px;
+    letter-spacing: 2px;
+  }
 
-    .cyber-btn:disabled {
-      background: #334155;
-      box-shadow: none;
-      cursor: not-allowed;
-      opacity: 0.4;
-    }
+  .divider::before, .divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: rgba(255,255,255,0.06);
+  }
 
-    .cyber-btn-secondary {
-      background: transparent;
-      border: 1px solid var(--glass-border);
-      color: var(--text-main);
-    }
+  .divider span {
+    padding: 0 16px;
+  }
 
-    .cyber-btn-secondary:hover {
-      background: rgba(255, 255, 255, 0.05);
-      border-color: var(--text-muted);
-      box-shadow: none;
-    }
+  .input-group {
+    margin-bottom: 20px;
+    text-align: left;
+  }
 
-    .code-matrix-output {
-      text-align: center;
-      font-size: 28px;
-      font-family: 'JetBrains Mono', monospace;
-      font-weight: 700;
-      letter-spacing: 8px;
-      padding: 18px;
-      background: rgba(0, 0, 0, 0.4);
-      border-radius: 12px;
-      margin-top: 20px;
-      border: 2px dashed var(--neon-yellow);
-      display: none;
-      color: var(--neon-yellow);
-      text-shadow: 0 0 12px rgba(255, 234, 0, 0.3);
-      animation: scanlinePulse 2s infinite alternate;
-    }
+  .input-group label {
+    display: block;
+    margin-bottom: 8px;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--muted);
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+  }
 
-    @keyframes scanlinePulse {
-      0% { box-shadow: inset 0 0 10px rgba(255, 234, 0, 0.1); }
-      100% { box-shadow: inset 0 0 20px rgba(255, 234, 0, 0.25); }
-    }
+  .input-wrapper {
+    position: relative;
+  }
 
-    .error-terminal {
-      color: var(--neon-pink);
-      background: rgba(237, 66, 69, 0.08);
-      border: 1px solid rgba(237, 66, 69, 0.2);
-      padding: 12px;
-      border-radius: 8px;
-      text-align: center;
-      margin-top: 16px;
-      font-size: 13px;
-      font-family: 'JetBrains Mono', monospace;
-      display: none;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-    }
+  .input-wrapper input {
+    width: 100%;
+    padding: 14px 14px 14px 44px;
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 12px;
+    color: var(--text);
+    font-size: 15px;
+    font-family: 'JetBrains Mono', monospace;
+    outline: none;
+    transition: all 0.3s ease;
+  }
 
-    .footer-stamp {
-      text-align: center;
-      margin-top: 32px;
-      color: var(--text-muted);
-      font-size: 12px;
-      line-height: 1.6;
-    }
+  .input-wrapper input:focus {
+    border-color: var(--green);
+    box-shadow: 0 0 12px rgba(0, 255, 136, 0.2);
+    background: rgba(0, 0, 0, 0.35);
+  }
 
-    .footer-stamp span {
-      color: var(--neon-cyan);
-      font-family: 'JetBrains Mono', monospace;
-    }
+  .code-box {
+    text-align: center;
+    font-size: 28px;
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 700;
+    letter-spacing: 8px;
+    padding: 18px;
+    background: rgba(0, 0, 0, 0.4);
+    border-radius: 12px;
+    margin-top: 20px;
+    border: 2px dashed var(--gold);
+    display: none;
+    color: var(--gold);
+    text-shadow: 0 0 12px rgba(250,204,21,0.3);
+  }
 
-    @media (max-width: 540px) {
-      .container {
-        padding: 28px 20px;
-      }
-      .code-matrix-output {
-        font-size: 20px;
-        letter-spacing: 4px;
-      }
-    }
-  </style>
+  .error-box {
+    color: #ff4d4f;
+    background: rgba(255, 77, 79, 0.08);
+    border: 1px solid rgba(255, 77, 79, 0.2);
+    padding: 12px;
+    border-radius: 8px;
+    text-align: center;
+    margin-top: 16px;
+    font-size: 13px;
+    display: none;
+  }
+
+  .footer {
+    text-align: center;
+    margin-top: 32px;
+    color: var(--muted);
+    font-size: 12px;
+  }
+
+  .footer span {
+    color: var(--green);
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .hidden {
+    display: none !important;
+  }
+
+  @media(min-width: 768px) {
+    .hero h1 { font-size: 72px; }
+    .feature-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+
+  @media(max-width: 540px) {
+    .pairing-card { padding: 28px 20px; }
+    .hero h1 { font-size: 36px; }
+    .code-box { font-size: 20px; letter-spacing: 4px; }
+  }
+</style>
 </head>
 <body>
 
-  <div class="loader-wrapper" id="loaderOverlay">
-    <div class="cyber-scanner"></div>
-    <div class="loader-text" id="loaderText">INITIALIZING CORE MATRIX...</div>
-  </div>
-
-  <div class="utility-bar">
-    <button class="utility-btn" id="themeToggleBtn" title="Toggle System Workspace Theme">
-      <i data-lucide="moon" id="themeIcon"></i>
-    </button>
-  </div>
-
+<!-- Hero Section -->
+<section class="hero" id="landing">
   <div class="container">
-
-    <div id="stageLanding">
-      <div class="header">
-        <div class="logo-frame">
-          <img id="botLogo" src="" alt="BUNNY TECH LOGO">
-        </div>
-        <h1 id="botTitle">BUNNY TECH</h1>
-        <p id="botSubtitle">Deployment Node Cluster Workspace Management Terminal</p>
-        <div class="instance-tag" id="instanceTag">INSTANCE</div>
-      </div>
-
-      <div class="prose-manifest">
-        <ul>
-          <li><i data-lucide="shield-check"></i> <span><strong>High-Security Pipeline:</strong> Full session token parsing architecture layered on end-to-end cloud protection.</span></li>
-          <li><i data-lucide="zap"></i> <span><strong>Realtime Sync States:</strong> Integrated live data replication via Supabase architecture protocols.</span></li>
-          <li><i data-lucide="cpu"></i> <span><strong>Zero Latency Routine:</strong> Asynchronous multi-device clustering execution processing environment.</span></li>
-        </ul>
-      </div>
-
-      <button class="cyber-btn" id="enterPairingBtn">
-        <span>GET STARTED</span>
-        <i data-lucide="arrow-right"></i>
-      </button>
+    <div class="logo-frame">
+      <img id="botLogo" src="" alt="BOT LOGO">
     </div>
+    <h1 id="botTitle">BUNNY BOT</h1>
+    <p id="botSubtitle">
+      Deploy your WhatsApp bot in 60 seconds. No technical setup, no servers, no hassle. 
+      Just pair, configure, and go live instantly with enterprise-grade uptime and 24/7 reliability.
+    </p>
+    <div class="instance-tag" id="instanceTag">INSTANCE</div>
+    <button class="btn btn-primary glow-purple" id="getStartedBtn">Get Started</button>
 
-    <div id="stagePairing" class="hidden-stage">
-      <div class="header">
-        <div class="logo-frame">
-          <img id="botLogo2" src="" alt="BUNNY TECH LOGO">
+    <div class="features">
+      <h2>Why Choose This Bot</h2>
+      <div class="feature-grid">
+        <div class="feature-card glass">
+          <h3><i data-lucide="zap"></i> Instant Deployment</h3>
+          <p>Your bot goes live the moment you complete pairing. No waiting, no manual configuration, no downtime.</p>
         </div>
-        <h1>DEVICE AUTHENTICATION</h1>
-        <p>Establish persistent connectivity parameters below</p>
-      </div>
-
-      <div class="status-badge" id="statusConsole">
-        <div class="status-pulse" id="statusIndicator"></div>
-        <span id="statusLabel">Awaiting handshake profile...</span>
-      </div>
-
-      <div class="qr-viewport" id="qrGraphicsBox">
-        <div class="qr-placeholder-text">
-          <i data-lucide="qr-code" style="width: 40px; height: 40px; color: var(--neon-cyan);"></i>
-          <span>Generating stream matrix...</span>
+        <div class="feature-card glass">
+          <h3><i data-lucide="shield-check"></i> Premium Performance</h3>
+          <p>Built on high-performance infrastructure with 99.9% uptime. Your bot stays online when it matters most.</p>
         </div>
-      </div>
-
-      <div class="divider-pane"><span>OR USE PAIR TOKEN</span></div>
-
-      <div class="input-frame">
-        <label class="input-descriptor" for="phoneInputNode">Terminal Operator Number</label>
-        <div class="input-wrapper-container">
-          <i data-lucide="smartphone"></i>
-          <input type="text" id="phoneInputNode" placeholder="e.g. 254748548334" autocomplete="off">
+        <div class="feature-card glass">
+          <h3><i data-lucide="cpu"></i> Full Control</h3>
+          <p>Manage settings, toggle features, and monitor status from one clean terminal. Everything is at your fingertips.</p>
         </div>
-      </div>
-
-      <button class="cyber-btn cyber-btn-secondary" id="requestPairTokenBtn">
-        <i data-lucide="key-round"></i>
-        <span>GENERATE PAIR CODE</span>
-      </button>
-
-      <div class="code-matrix-output" id="tokenDisplayMatrix"></div>
-
-      <div class="error-terminal" id="errorConsoleLogs">
-        <i data-lucide="alert-triangle"></i>
-        <span id="errorTextSpan">Handshake fault exception caught.</span>
+        <div class="feature-card glass">
+          <h3><i data-lucide="lock"></i> Secure & Private</h3>
+          <p>Each bot runs in isolation with encrypted sessions. Your data and conversations stay private and secure.</p>
+        </div>
       </div>
     </div>
-
-    <div class="footer-stamp">
-      Powered by <span id="footerBrand">BUNNY TECH</span> Engine Cluster • Instance: <span id="footerInstance"></span>
-    </div>
-
   </div>
+</section>
 
-  <script src="/socket.io/socket.io.js"></script>
-  <script>
-    const socket = io();
-    const loaderOverlay = document.getElementById('loaderOverlay');
-    const themeToggleBtn = document.getElementById('themeToggleBtn');
-    const themeIcon = document.getElementById('themeIcon');
+<!-- Pairing Section -->
+<section class="pairing" id="pairing">
+  <div class="container">
+    <div class="pairing-header">
+      <h2>Device Authentication</h2>
+      <p>Establish persistent connectivity with your WhatsApp account</p>
+    </div>
 
-    const stageLanding = document.getElementById('stageLanding');
-    const stagePairing = document.getElementById('stagePairing');
-    const enterPairingBtn = document.getElementById('enterPairingBtn');
+    <div class="pairing-card glass glow-green">
+      <div class="logo-frame">
+        <img id="botLogo2" src="" alt="BOT LOGO">
+      </div>
 
-    const statusLabel = document.getElementById('statusLabel');
-    const statusIndicator = document.getElementById('statusIndicator');
-    const qrGraphicsBox = document.getElementById('qrGraphicsBox');
-    const requestPairTokenBtn = document.getElementById('requestPairTokenBtn');
-    const phoneInputNode = document.getElementById('phoneInputNode');
-    const tokenDisplayMatrix = document.getElementById('tokenDisplayMatrix');
-    const errorConsoleLogs = document.getElementById('errorConsoleLogs');
-    const errorTextSpan = document.getElementById('errorTextSpan');
+      <div class="status-badge">
+        <div class="status-dot" id="statusDot"></div>
+        <span id="statusLabel">Awaiting connection...</span>
+      </div>
 
-    let instanceData = {};
+      <div class="qr-box" id="qrBox">
+        <i data-lucide="qr-code" style="width: 40px; height: 40px; color: var(--green);"></i>
+        <p style="margin-top: 12px; color: var(--muted);">Generating QR code...</p>
+      </div>
 
-    lucide.createIcons();
+      <div class="divider"><span>OR USE PAIR CODE</span></div>
 
-    // Load instance data and replace all hardcoded values
-    async function loadInstanceData() {
-      try {
-        const res = await fetch('/');
-        instanceData = await res.json();
-        
-        const botName = instanceData.bot || 'BUNNY TECH';
-        const instanceId = instanceData.instance || 'UNKNOWN';
-        const imageUrl = instanceData.startup_image || 'https://i.ibb.co/1tM9QHF9/IMG-20260525-WA0076.jpg';
-        
-        // Update meta tags
-        document.getElementById('pageTitle').textContent = `${botName} - Advanced Terminal Pair Management`;
-        document.getElementById('pageDesc').content = `Pair your WhatsApp to ${botName}. Fast, secure, and reliable WhatsApp bot with QR and Pair Code support.`;
-        document.getElementById('ogTitle').content = `${botName} - Advanced Terminal Pair Management`;
-        document.getElementById('ogDesc').content = `Pair your WhatsApp to ${botName}. Fast, secure, and reliable WhatsApp bot.`;
-        document.getElementById('ogImage').content = imageUrl;
-        document.getElementById('twTitle').content = `${botName} - Advanced Terminal Pair Management`;
-        document.getElementById('twDesc').content = `Pair your WhatsApp to ${botName}. Fast, secure, and reliable WhatsApp bot.`;
-        document.getElementById('twImage').content = imageUrl;
-        document.getElementById('favicon').href = imageUrl;
-        
-        // Update UI
-        document.getElementById('botLogo').src = imageUrl;
-        document.getElementById('botLogo2').src = imageUrl;
-        document.getElementById('botTitle').textContent = botName.toUpperCase();
-        document.getElementById('instanceTag').textContent = instanceId;
-        document.getElementById('footerBrand').textContent = botName;
-        document.getElementById('footerInstance').textContent = instanceId;
-        document.getElementById('loaderText').textContent = `INITIALIZING ${botName.toUpperCase()}...`;
-        
-        // Hide loader
-        setTimeout(() => {
-          loaderOverlay.style.opacity = '0';
-          setTimeout(() => loaderOverlay.style.display = 'none', 500);
-        }, 800);
-      } catch (e) {
-        console.error('Failed to load instance data', e);
-        loaderOverlay.style.opacity = '0';
-        setTimeout(() => loaderOverlay.style.display = 'none', 500);
-      }
+      <div class="input-group">
+        <label>Phone Number</label>
+        <div class="input-wrapper">
+          <i data-lucide="smartphone" style="position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--muted);"></i>
+          <input type="text" id="phoneInput" placeholder="e.g. 254748548334" autocomplete="off">
+        </div>
+      </div>
+
+      <button class="btn btn-secondary" id="requestPairBtn">
+        <i data-lucide="key-round"></i>
+        Generate Pair Code
+      </button>
+
+      <div class="code-box" id="codeBox"></div>
+      <div class="error-box" id="errorBox"></div>
+
+      <div class="footer">
+        Powered by <span id="footerBrand">BUNNY BOT</span> • Instance: <span id="footerInstance"></span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+  const socket = io();
+  lucide.createIcons();
+
+  const getStartedBtn = document.getElementById('getStartedBtn');
+  const landing = document.getElementById('landing');
+  const pairing = document.getElementById('pairing');
+
+  const statusLabel = document.getElementById('statusLabel');
+  const statusDot = document.getElementById('statusDot');
+  const qrBox = document.getElementById('qrBox');
+  const requestPairBtn = document.getElementById('requestPairBtn');
+  const phoneInput = document.getElementById('phoneInput');
+  const codeBox = document.getElementById('codeBox');
+  const errorBox = document.getElementById('errorBox');
+
+  // Load bot data from index.js root endpoint
+  async function loadData() {
+    try {
+      const res = await fetch('/');
+      const data = await res.json();
+
+      const botName = data.bot || 'BUNNY BOT';
+      const instanceId = data.instance || 'UNKNOWN';
+      const imageUrl = 'https://i.ibb.co/1tM9QHF9/IMG-20260525-WA0076.jpg';
+
+      document.getElementById('botTitle').textContent = botName.toUpperCase();
+      document.getElementById('botLogo').src = imageUrl;
+      document.getElementById('botLogo2').src = imageUrl;
+      document.getElementById('instanceTag').textContent = instanceId;
+      document.getElementById('footerBrand').textContent = botName;
+      document.getElementById('footerInstance').textContent = instanceId;
+      document.getElementById('pageTitle').textContent = `${botName} - Terminal Pair Management`;
+      document.getElementById('pageDesc').content = `Pair your WhatsApp to ${botName}. Fast, secure, and reliable WhatsApp bot with QR and Pair Code support.`;
+    } catch (err) {
+      console.error(err);
     }
+  }
 
-    loadInstanceData();
+  // Switch to pairing view
+  getStartedBtn.addEventListener('click', () => {
+    landing.style.display = 'none';
+    pairing.classList.add('active');
+    socket.emit('request-qr');
+    pairing.scrollIntoView({ behavior: 'smooth' });
+  });
 
-    // Theme Switch
-    themeToggleBtn.addEventListener('click', () => {
-      const activeTheme = document.documentElement.getAttribute('data-theme');
-      const targetTheme = activeTheme === 'dark' ? 'light' : 'dark';
-      document.documentElement.setAttribute('data-theme', targetTheme);
-      themeIcon.setAttribute('data-lucide', targetTheme === 'dark' ? 'moon' : 'sun');
+  // Socket events
+  socket.on('qr', (qr) => {
+    qrBox.innerHTML = `<img src="${qr}" alt="QR Code">`;
+    statusLabel.textContent = 'Scan QR code with WhatsApp';
+    statusDot.classList.add('connected');
+  });
+
+  socket.on('pair_code', (code) => {
+    codeBox.style.display = 'block';
+    codeBox.textContent = code;
+    statusLabel.textContent = 'Pair code generated';
+  });
+
+  socket.on('status', (msg) => {
+    statusLabel.textContent = msg;
+    if (msg === 'Connected') {
+      statusDot.classList.add('connected');
+      qrBox.innerHTML = `
+        <i data-lucide="check-circle" style="width: 40px; height: 40px; color: var(--green);"></i>
+        <p style="margin-top: 12px; color: var(--green);">Connected Successfully</p>
+      `;
       lucide.createIcons();
-    });
-
-    // Stage Switching
-    enterPairingBtn.addEventListener('click', () => {
-      stageLanding.classList.add('hidden-stage');
-      stagePairing.classList.remove('hidden-stage');
-    });
-
-    // Socket Events
-    socket.on('qr', (qr) => {
-      qrGraphicsBox.innerHTML = `<img src="${qr}" alt="QR Code">`;
-      statusLabel.textContent = 'Scan this QR with WhatsApp';
-      statusIndicator.classList.add('connected');
-    });
-
-    socket.on('pair_code', (code) => {
-      tokenDisplayMatrix.textContent = code;
-      tokenDisplayMatrix.style.display = 'block';
-      statusLabel.textContent = 'Pair code generated';
-      statusIndicator.classList.add('connected');
-    });
-
-    socket.on('status', (status) => {
-      statusLabel.textContent = status;
-      if (status === 'Connected') {
-        statusIndicator.classList.add('connected');
-        qrGraphicsBox.innerHTML = '<div class="qr-placeholder-text"><i data-lucide="check-circle" style="width: 48px; height: 48px; color: var(--neon-green);"></i><span>Connected Successfully</span></div>';
-        lucide.createIcons();
-      }
-    });
-
-    requestPairTokenBtn.addEventListener('click', () => {
-      const phone = phoneInputNode.value.trim();
-      if (!phone) {
-        showError('Enter a valid phone number');
-        return;
-      }
-      hideError();
-      socket.emit('request_pair_code', phone);
-      requestPairTokenBtn.disabled = true;
-      setTimeout(() => requestPairTokenBtn.disabled = false, 5000);
-    });
-
-    function showError(msg) {
-      errorTextSpan.textContent = msg;
-      errorConsoleLogs.style.display = 'flex';
+    } else {
+      statusDot.classList.remove('connected');
     }
+  });
 
-    function hideError() {
-      errorConsoleLogs.style.display = 'none';
+  socket.on('pair_error', (err) => {
+    errorBox.style.display = 'block';
+    errorBox.textContent = err || 'Failed to generate code';
+  });
+
+  requestPairBtn.addEventListener('click', () => {
+    const phone = phoneInput.value.trim();
+    if (!phone) {
+      errorBox.style.display = 'block';
+      errorBox.textContent = 'Enter phone number';
+      return;
     }
-  </script>
+    errorBox.style.display = 'none';
+    socket.emit('request_pair_code', phone);
+  });
+
+  loadData();
+</script>
+
 </body>
 </html>
