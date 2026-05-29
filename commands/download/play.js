@@ -7,7 +7,7 @@ import path from 'path'
 import { tmpdir } from 'os'
 
 export const name = 'play'
-export const alias = ['music', 'song', 'download', 'dl', 'mp3', 'audio']
+export const alias = ['musix']
 export const category = 'Download'
 export const desc = 'Search & download music with 30+ API fallbacks — sends thumbnail preview then audio'
 

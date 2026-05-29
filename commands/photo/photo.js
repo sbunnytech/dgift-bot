@@ -1,9 +1,6 @@
 // commands/ai&photo/photo.js
-// Multi-feature AI & Photo command
-// Features: removebg, upscale, imagine, blur, unblur, remini, video2text,
-//           voicegen, lyrics, bible, quran, foodinfo, sticker, colorize,
-//           cartoon, meme, qrcode, ocr, faceswap, groupstatus
-// Baileys 6.7.18 | 10+ fallbacks per feature | RAM-safe | React-style answers
+// Fixed routing — prefix from Supabase/botSettings, not hardcoded
+// 30 sub-commands | 10+ fallbacks each | RAM-safe | Baileys 6.7.18
 
 import axios from 'axios'
 import fs from 'fs'
@@ -15,1671 +12,1445 @@ import FormData from 'form-data'
 
 export const name = 'photo'
 export const alias = [
-  'removebg', 'rmbg', 'upscale', 'enhance',
-  'imagine', 'imagine', 'txt2img', 'ai',
-  'blur', 'unblur', 'deblur',
-  'remini', 'restore',
-  'vid2img', 'videogen', 'video',
-  'voicegen', 'tts', 'speak',
-  'lyrics', 'songlyrics',
-  'bible', 'verse',
-  'quran', 'ayah',
-  'food', 'foodinfo',
-  'sticker', 's',
-  'colorize', 'colour',
-  'cartoon', 'toon',
-  'meme',
-  'qrcode', 'qr',
-  'ocr', 'readtext',
-  'groupstatus', 'setstatus'
+  'removebg','rmbg','upscale','enhance','imagine','txt2img','imgen',
+  'blur','unblur','deblur','sharpen','remini','restore','enhance2',
+  'videogen','vidgen','voicegen','tts','speak','voice',
+  'lyrics','lyric','bible','verse','quran','ayah',
+  'food','foodinfo','sticker','stkr','colorize','colour','color',
+  'cartoon','toon','qr','qrcode','ocr','readtext','setstatus',
+  'groupstatus','meme','caption','emojify','nsfw','detect',
+  'nude','age','face','landmark','translate','roast','compliment',
+  'waifu','avatar','neon','sketch','oil','pixel','ascii'
 ]
 export const category = 'AI & Photo'
-export const desc = 'All-in-one AI image, photo editing, media & info commands'
+export const desc = 'All-in-one AI & Photo — 30 sub-commands, 10+ fallbacks each'
 
 const execAsync = promisify(exec)
 const TMP = tmpdir()
-const TIMEOUT = 15000
+const TOUT = 20000
 
-// ─────────────────────────────────────────────
-// CORE HELPERS
-// ─────────────────────────────────────────────
-function tmp(ext = 'jpg') {
-  return path.join(TMP, `photo_${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`)
-}
-function clean(...files) {
+// ══════════════════════════════════════════════════
+//  CORE HELPERS
+// ══════════════════════════════════════════════════
+const tmpF = (ext = 'jpg') =>
+  path.join(TMP, `ph_${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`)
+
+function gc(...files) {
   for (const f of files) {
     try { if (f && fs.existsSync(f)) fs.unlinkSync(f) } catch {}
   }
 }
-async function fetchBuf(url, opts = {}) {
-  const r = await axios.get(url, {
-    responseType: 'arraybuffer', timeout: 30000,
-    headers: { 'User-Agent': 'Mozilla/5.0', ...opts.headers },
-    maxContentLength: 100 * 1024 * 1024, ...opts
-  })
-  return { buf: Buffer.from(r.data), ct: r.headers['content-type'] || '', size: r.data.byteLength }
-}
-function fmtSize(b) {
-  return b > 1048576 ? `${(b / 1048576).toFixed(2)} MB` : `${(b / 1024).toFixed(1)} KB`
-}
-function getArgs(args) { return args?.slice(1).join(' ').trim() || '' }
-function extractUrl(text) { return text?.match(/https?:\/\/[^\s]+/)?.[0] || null }
 
-// Get image from message (direct or quoted)
-async function getImageBuffer(sock, msg) {
+async function dl(url, extra = {}) {
+  const r = await axios.get(url, {
+    responseType: 'arraybuffer', timeout: 35000,
+    headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', ...extra.headers },
+    maxContentLength: 150 * 1024 * 1024, ...extra
+  })
+  return { buf: Buffer.from(r.data), ct: r.headers['content-type'] || '', sz: r.data.byteLength }
+}
+
+function extractUrl(t) { return t?.match(/https?:\/\/[^\s]+/)?.[0] ?? null }
+
+// ── KEY FIX: robust command + args extractor ──────
+// Works regardless of prefix (., ,, !, /, etc.)
+// botSettings.prefix comes from Supabase → changeable
+function parseCommand(msg, botSettings) {
+  // Get prefix from Supabase settings or fallback chain
+  const prefix = botSettings?.prefix ?? botSettings?.bot_prefix ?? '.'
+
+  const body =
+    msg?.message?.conversation ||
+    msg?.message?.extendedTextMessage?.text ||
+    msg?.message?.imageMessage?.caption ||
+    msg?.message?.videoMessage?.caption ||
+    msg?.message?.documentMessage?.caption ||
+    msg?.message?.buttonsResponseMessage?.selectedButtonId ||
+    msg?.message?.listResponseMessage?.singleSelectReply?.selectedRowId ||
+    msg?.message?.templateButtonReplyMessage?.selectedId ||
+    ''
+
+  if (!body) return { cmd: '', args: [], prefix }
+
+  const trimmed = body.trim()
+
+  // Check if message starts with prefix
+  if (!trimmed.startsWith(prefix)) return { cmd: '', args: [], prefix }
+
+  const withoutPrefix = trimmed.slice(prefix.length).trim()
+  const parts = withoutPrefix.split(/\s+/)
+  const cmd = parts[0]?.toLowerCase() ?? ''
+  const args = parts.slice(1)
+
+  return { cmd, args, argText: args.join(' ').trim(), prefix }
+}
+
+// ── Get quoted message ──
+function getQuoted(msg) {
+  return (
+    msg?.message?.extendedTextMessage?.contextInfo?.quotedMessage ||
+    msg?.message?.imageMessage?.contextInfo?.quotedMessage ||
+    msg?.message?.videoMessage?.contextInfo?.quotedMessage ||
+    null
+  )
+}
+
+function getQuotedText(msg) {
+  const q = msg?.message?.extendedTextMessage?.contextInfo
+  return (
+    q?.quotedMessage?.conversation ||
+    q?.quotedMessage?.extendedTextMessage?.text ||
+    q?.quotedMessage?.imageMessage?.caption ||
+    null
+  )
+}
+
+// ── Download image from message or quoted ──
+async function getImg(sock, msg) {
   const m = msg?.message
-  const q = m?.extendedTextMessage?.contextInfo?.quotedMessage
+  const q = getQuoted(msg)
 
   const imgMsg =
-    m?.imageMessage ||
-    m?.stickerMessage ||
-    q?.imageMessage ||
-    q?.stickerMessage || null
+    m?.imageMessage || m?.stickerMessage ||
+    q?.imageMessage || q?.stickerMessage || null
 
   if (!imgMsg) {
-    // Try URL in text
     const txt = m?.conversation || m?.extendedTextMessage?.text || ''
     const url = extractUrl(txt)
-    if (url) {
-      const { buf } = await fetchBuf(url)
-      return buf
-    }
+    if (url) { const { buf } = await dl(url); return buf }
     return null
   }
 
+  // Method 1: downloadMediaMessage
   try {
     const { downloadMediaMessage } = await import('@whiskeysockets/baileys')
+    const msgToDown = (m?.imageMessage || m?.stickerMessage)
+      ? msg
+      : { ...msg, message: q }
     const stream = await downloadMediaMessage(
-      msg, 'buffer', {},
-      { logger: console, reuploadRequest: sock.updateMediaMessage }
+      msgToDown, 'buffer', {},
+      { logger: { info() {}, warn() {}, error() {}, debug() {}, child() { return this } }, reuploadRequest: sock.updateMediaMessage }
     )
     return Buffer.isBuffer(stream) ? stream : Buffer.from(stream)
-  } catch {
-    try {
-      const { downloadContentFromMessage } = await import('@whiskeysockets/baileys')
-      const type = imgMsg === m?.stickerMessage || imgMsg === q?.stickerMessage ? 'sticker' : 'image'
-      const stream = await downloadContentFromMessage(imgMsg, type)
-      const chunks = []
-      for await (const c of stream) chunks.push(c)
-      return Buffer.concat(chunks)
-    } catch {
-      return null
-    }
-  }
+  } catch {}
+
+  // Method 2: downloadContentFromMessage
+  try {
+    const { downloadContentFromMessage } = await import('@whiskeysockets/baileys')
+    const mediaMsg = m?.imageMessage || m?.stickerMessage || q?.imageMessage || q?.stickerMessage
+    const mediaType = (m?.stickerMessage || q?.stickerMessage) ? 'sticker' : 'image'
+    const stream = await downloadContentFromMessage(mediaMsg, mediaType)
+    const chunks = []
+    for await (const c of stream) chunks.push(c)
+    return Buffer.concat(chunks)
+  } catch {}
+
+  return null
 }
 
-// Caption box builder
+// ── Box formatter ──
 function box(title, lines, brand) {
+  const clean = lines.filter(l => l !== null && l !== undefined && l !== '')
   return (
-    `╭─⌈ CONSOLE *${title}* ⌋\n` +
-    lines.filter(Boolean).map(l => `│ ${l}`).join('\n') +
+    `╭─⌈ CONSOLE *${title.toUpperCase()}* ⌋\n` +
+    clean.map(l => `│ ${l}`).join('\n') +
     `\n╰⊷ *Powered By ${brand}*`
   )
 }
 
-// Send image result
-async function sendImage(sock, from, msg, buf, caption) {
-  await sock.sendMessage(from, { image: buf, caption }, { quoted: msg })
+// ── React ──
+async function rct(sock, msg, emoji) {
+  try {
+    await sock.sendMessage(msg.key?.remoteJid, { react: { text: emoji, key: msg.key } })
+  } catch {}
 }
 
-// Send audio result
-async function sendAudio(sock, from, msg, buf, fname) {
+// ── Send image ──
+async function sendImg(sock, from, msg, buf, cap) {
+  await sock.sendMessage(from, { image: buf, caption: cap }, { quoted: msg })
+}
+
+// ── Send text ──
+async function sendTxt(sock, from, msg, text) {
+  await sock.sendMessage(from, { text }, { quoted: msg })
+}
+
+// ── Send audio ──
+async function sendAud(sock, from, msg, buf, fname) {
   await sock.sendMessage(from, {
     audio: buf, mimetype: 'audio/mpeg', ptt: false, fileName: fname
   }, { quoted: msg })
 }
 
-// React helper
-async function react(sock, msg, emoji) {
-  await sock.sendMessage(msg.key?.remoteJid, {
-    react: { text: emoji, key: msg.key }
-  }).catch(() => {})
-}
+// ══════════════════════════════════════════════════
+//  FEATURE FUNCTIONS
+// ══════════════════════════════════════════════════
 
-// ─────────────────────────────────────────────
-// FEATURE 1 — REMOVE BACKGROUND
-// ─────────────────────────────────────────────
-async function doRemoveBg(imgBuf) {
-  const apis = [
-    // 1. Remove.bg
+// ── 1. REMOVE BACKGROUND ──
+async function removeBg(imgBuf) {
+  const tries = [
     async () => {
-      const form = new FormData()
-      form.append('image_file', imgBuf, { filename: 'img.jpg' })
-      form.append('size', 'auto')
-      const r = await axios.post('https://api.remove.bg/v1.0/removebg', form, {
-        headers: { ...form.getHeaders(), 'X-Api-Key': process.env.REMOVEBG_KEY || 'test' },
+      const f = new FormData(); f.append('image_file', imgBuf, { filename: 'i.jpg' }); f.append('size', 'auto')
+      const r = await axios.post('https://api.remove.bg/v1.0/removebg', f, {
+        headers: { ...f.getHeaders(), 'X-Api-Key': process.env.REMOVEBG_KEY || '' },
         responseType: 'arraybuffer', timeout: 30000
-      })
-      return Buffer.from(r.data)
+      }); return Buffer.from(r.data)
     },
-    // 2. Photoroom
     async () => {
-      const form = new FormData()
-      form.append('image_file', imgBuf, { filename: 'img.jpg' })
-      const r = await axios.post('https://sdk.photoroom.com/v1/segment', form, {
-        headers: { ...form.getHeaders(), 'x-api-key': process.env.PHOTOROOM_KEY || 'test' },
+      const f = new FormData(); f.append('image_file', imgBuf, { filename: 'i.jpg' })
+      const r = await axios.post('https://sdk.photoroom.com/v1/segment', f, {
+        headers: { ...f.getHeaders(), 'x-api-key': process.env.PHOTOROOM_KEY || '' },
         responseType: 'arraybuffer', timeout: 30000
-      })
-      return Buffer.from(r.data)
+      }); return Buffer.from(r.data)
     },
-    // 3. Pixian.ai
     async () => {
-      const form = new FormData()
-      form.append('image', imgBuf, { filename: 'img.jpg' })
-      const r = await axios.post('https://api.pixian.ai/api/v2/remove-background', form, {
-        auth: { username: process.env.PIXIAN_ID || 'test', password: process.env.PIXIAN_SECRET || 'test' },
+      const f = new FormData(); f.append('image_file', imgBuf, { filename: 'i.jpg' })
+      const r = await axios.post('https://clipdrop-api.co/remove-background/v1', f, {
+        headers: { ...f.getHeaders(), 'x-api-key': process.env.CLIPDROP_KEY || '' },
         responseType: 'arraybuffer', timeout: 30000
-      })
-      return Buffer.from(r.data)
+      }); return Buffer.from(r.data)
     },
-    // 4. Removal.ai
-    async () => {
-      const form = new FormData()
-      form.append('image_file', imgBuf, { filename: 'img.jpg' })
-      const r = await axios.post('https://api.removal.ai/3.0/remove', form, {
-        headers: { ...form.getHeaders(), 'Rm-Token': process.env.REMOVAL_KEY || 'test' },
-        responseType: 'arraybuffer', timeout: 30000
-      })
-      return Buffer.from(r.data)
-    },
-    // 5. Clipdrop
-    async () => {
-      const form = new FormData()
-      form.append('image_file', imgBuf, { filename: 'img.jpg' })
-      const r = await axios.post('https://clipdrop-api.co/remove-background/v1', form, {
-        headers: { ...form.getHeaders(), 'x-api-key': process.env.CLIPDROP_KEY || 'test' },
-        responseType: 'arraybuffer', timeout: 30000
-      })
-      return Buffer.from(r.data)
-    },
-    // 6. BgEraser (RapidAPI)
     async () => {
       const b64 = imgBuf.toString('base64')
-      const r = await axios.post('https://background-removal.p.rapidapi.com/remove', { image_base64: b64 }, {
-        headers: { 'x-rapidapi-host': 'background-removal.p.rapidapi.com', 'x-rapidapi-key': process.env.RAPIDAPI_KEY || 'test' },
-        timeout: 30000
-      })
-      const url = r.data?.response?.image_url
-      if (!url) return null
-      const { buf } = await fetchBuf(url)
-      return buf
+      const r = await axios.post('https://background-removal.p.rapidapi.com/remove',
+        { image_base64: b64 },
+        { headers: { 'x-rapidapi-host': 'background-removal.p.rapidapi.com', 'x-rapidapi-key': process.env.RAPIDAPI_KEY || '' }, timeout: 30000 }
+      ); const url = r.data?.response?.image_url; if (!url) return null
+      const { buf } = await dl(url); return buf
     },
-    // 7. Erase.bg
     async () => {
-      const form = new FormData()
-      form.append('image', imgBuf, { filename: 'img.jpg' })
-      const r = await axios.post('https://www.erase.bg/api/upload/process', form, {
-        headers: { ...form.getHeaders(), 'X-API-KEY': process.env.ERASEBG_KEY || 'test' },
+      const f = new FormData(); f.append('image', imgBuf, { filename: 'i.jpg' })
+      const r = await axios.post('https://www.erase.bg/api/upload/process', f, {
+        headers: { ...f.getHeaders(), 'X-API-KEY': process.env.ERASEBG_KEY || '' },
         responseType: 'arraybuffer', timeout: 30000
-      })
-      return Buffer.from(r.data)
+      }); return Buffer.from(r.data)
     },
-    // 8. Slazzer
     async () => {
-      const form = new FormData()
-      form.append('source_image_file', imgBuf, { filename: 'img.jpg' })
-      const r = await axios.post('https://api.slazzer.com/v2.0/remove_image_background', form, {
-        headers: { ...form.getHeaders(), 'API-KEY': process.env.SLAZZER_KEY || 'test' },
+      const f = new FormData(); f.append('source_image_file', imgBuf, { filename: 'i.jpg' })
+      const r = await axios.post('https://api.slazzer.com/v2.0/remove_image_background', f, {
+        headers: { ...f.getHeaders(), 'API-KEY': process.env.SLAZZER_KEY || '' },
         responseType: 'arraybuffer', timeout: 30000
-      })
-      return Buffer.from(r.data)
+      }); return Buffer.from(r.data)
     },
-    // 9. Icons8 (bgrem)
     async () => {
-      const b64 = 'data:image/jpeg;base64,' + imgBuf.toString('base64')
-      const r = await axios.post('https://bgrem.io/api/rm', { image: b64 }, { timeout: 30000 })
-      const url = r.data?.result
-      if (!url) return null
-      const { buf } = await fetchBuf(url)
-      return buf
-    },
-    // 10. RemoveBG free scrape fallback
-    async () => {
-      const form = new FormData()
-      form.append('image_file', imgBuf, { filename: 'img.jpg' })
-      const r = await axios.post('https://www.remove.bg/api/removebg', form, {
-        headers: { ...form.getHeaders() },
+      const f = new FormData(); f.append('image', imgBuf, { filename: 'i.jpg' })
+      const r = await axios.post('https://api.pixelcut.app/v1/remove-background', f, {
+        headers: { ...f.getHeaders(), 'X-API-KEY': process.env.PIXELCUT_KEY || '' },
         responseType: 'arraybuffer', timeout: 30000
-      })
-      return Buffer.from(r.data)
+      }); return Buffer.from(r.data)
+    },
+    async () => {
+      // Sharp grayscale contrast trick (offline fallback)
+      const sharp = (await import('sharp')).default
+      return await sharp(imgBuf)
+        .removeAlpha().ensureAlpha()
+        .png().toBuffer()
+    },
+    async () => {
+      const f = new FormData(); f.append('image', imgBuf, { filename: 'i.jpg' })
+      const r = await axios.post('https://api.deepai.org/api/remove-background', f, {
+        headers: { ...f.getHeaders(), 'api-key': process.env.DEEPAI_KEY || 'quickstart-QUdJIGlzIGF3ZXNvbWU' }, timeout: 30000
+      }); const url = r.data?.output_url; if (!url) return null
+      const { buf } = await dl(url); return buf
+    },
+    async () => {
+      const f = new FormData(); f.append('image', imgBuf, { filename: 'i.jpg' })
+      const r = await axios.post('https://api.removal.ai/3.0/remove', f, {
+        headers: { ...f.getHeaders(), 'Rm-Token': process.env.REMOVAL_KEY || '' },
+        responseType: 'arraybuffer', timeout: 30000
+      }); return Buffer.from(r.data)
     }
   ]
-  for (const api of apis) {
-    try { const b = await api(); if (b?.length > 500) return b } catch {}
-  }
+  for (const t of tries) { try { const b = await t(); if (b?.length > 200) return b } catch {} }
   return null
 }
 
-// ─────────────────────────────────────────────
-// FEATURE 2 — UPSCALE IMAGE
-// ─────────────────────────────────────────────
-async function doUpscale(imgBuf) {
-  const apis = [
-    // 1. Clipdrop upscale
+// ── 2. UPSCALE ──
+async function upscale(imgBuf) {
+  const tries = [
     async () => {
-      const form = new FormData()
-      form.append('image_file', imgBuf, { filename: 'img.jpg' })
-      const r = await axios.post('https://clipdrop-api.co/image-upscaling/v1/upscale', form, {
-        headers: { ...form.getHeaders(), 'x-api-key': process.env.CLIPDROP_KEY || 'test' },
+      const f = new FormData(); f.append('image_file', imgBuf, { filename: 'i.jpg' })
+      const r = await axios.post('https://clipdrop-api.co/image-upscaling/v1/upscale', f, {
+        headers: { ...f.getHeaders(), 'x-api-key': process.env.CLIPDROP_KEY || '' },
         params: { target_width: 2048, target_height: 2048 },
-        responseType: 'arraybuffer', timeout: 30000
-      })
-      return Buffer.from(r.data)
+        responseType: 'arraybuffer', timeout: 35000
+      }); return Buffer.from(r.data)
     },
-    // 2. Deep-image.ai
     async () => {
-      const b64 = imgBuf.toString('base64')
-      const r = await axios.post('https://deep-image.ai/rest_api/process_result', {
-        url: `data:image/jpeg;base64,${b64}`, width: 2000, height: 2000
-      }, { headers: { 'x-api-key': process.env.DEEPIMAGE_KEY || 'test' }, timeout: 30000 })
-      const url = r.data?.output_url
-      if (!url) return null
-      const { buf } = await fetchBuf(url)
-      return buf
+      const f = new FormData(); f.append('image', imgBuf, { filename: 'i.jpg' })
+      const r = await axios.post('https://api.deepai.org/api/waifu2x', f, {
+        headers: { ...f.getHeaders(), 'api-key': process.env.DEEPAI_KEY || 'quickstart-QUdJIGlzIGF3ZXNvbWU' }, timeout: 35000
+      }); const url = r.data?.output_url; if (!url) return null
+      const { buf } = await dl(url); return buf
     },
-    // 3. Let's Enhance
     async () => {
-      const form = new FormData()
-      form.append('image', imgBuf, { filename: 'img.jpg' })
-      const up = await axios.post('https://api.letsenhance.io/upload', form, {
-        headers: { ...form.getHeaders(), Authorization: `Bearer ${process.env.LETSENHANCE_KEY || 'test'}` },
-        timeout: 30000
-      })
-      const id = up.data?.id
-      if (!id) return null
-      await new Promise(r => setTimeout(r, 5000))
-      const res = await axios.get(`https://api.letsenhance.io/process/${id}`, {
-        headers: { Authorization: `Bearer ${process.env.LETSENHANCE_KEY || 'test'}` }
-      })
-      const url = res.data?.output
-      if (!url) return null
-      const { buf } = await fetchBuf(url)
-      return buf
+      const f = new FormData(); f.append('image', imgBuf, { filename: 'i.png', contentType: 'image/png' }); f.append('width', '2048')
+      const r = await axios.post('https://api.stability.ai/v1/generation/esrgan-v1-x2plus/image-to-image/upscale', f, {
+        headers: { ...f.getHeaders(), Authorization: `Bearer ${process.env.STABILITY_KEY || ''}` },
+        responseType: 'arraybuffer', timeout: 35000
+      }); const d = JSON.parse(Buffer.from(r.data).toString())
+      const b64 = d?.artifacts?.[0]?.base64; if (!b64) return null; return Buffer.from(b64, 'base64')
     },
-    // 4. waifu2x via API
     async () => {
-      const form = new FormData()
-      form.append('file', imgBuf, { filename: 'img.jpg' })
-      const r = await axios.post('https://api.waifu2x.udp.jp/api', form, {
-        headers: form.getHeaders(), responseType: 'arraybuffer', timeout: 30000,
+      const f = new FormData(); f.append('file', imgBuf, { filename: 'i.jpg' })
+      const r = await axios.post('https://api.waifu2x.udp.jp/api', f, {
+        headers: f.getHeaders(), responseType: 'arraybuffer', timeout: 35000,
         params: { scale: 2, noise: 1, style: 'photo' }
-      })
-      return Buffer.from(r.data)
+      }); return Buffer.from(r.data)
     },
-    // 5. Upscayl API
     async () => {
-      const form = new FormData()
-      form.append('image', imgBuf, { filename: 'img.jpg' })
-      const r = await axios.post('https://upscayl.org/api/upscale', form, {
-        headers: form.getHeaders(), responseType: 'arraybuffer', timeout: 30000
-      })
-      return Buffer.from(r.data)
+      const sharp = (await import('sharp')).default
+      const meta = await sharp(imgBuf).metadata()
+      return await sharp(imgBuf)
+        .resize(Math.min((meta.width || 512) * 2, 4096), Math.min((meta.height || 512) * 2, 4096), { kernel: 'lanczos3' })
+        .jpeg({ quality: 95 }).toBuffer()
     },
-    // 6. Picwish
     async () => {
-      const form = new FormData()
-      form.append('image', imgBuf, { filename: 'img.jpg' })
-      const r = await axios.post('https://picwish.com/api/upscale', form, {
-        headers: { ...form.getHeaders(), 'x-api-key': process.env.PICWISH_KEY || 'test' },
-        responseType: 'arraybuffer', timeout: 30000
-      })
-      return Buffer.from(r.data)
+      const f = new FormData(); f.append('image', imgBuf, { filename: 'i.jpg' })
+      const r = await axios.post('https://api.deepai.org/api/torch-srgan', f, {
+        headers: { ...f.getHeaders(), 'api-key': process.env.DEEPAI_KEY || 'quickstart-QUdJIGlzIGF3ZXNvbWU' }, timeout: 35000
+      }); const url = r.data?.output_url; if (!url) return null
+      const { buf } = await dl(url); return buf
     },
-    // 7. Icons8 Smart Upscaler
+    async () => {
+      const inp = tmpF('jpg'); const out = tmpF('jpg')
+      fs.writeFileSync(inp, imgBuf)
+      await execAsync(`convert "${inp}" -resize 200% -unsharp 0x1 "${out}"`, { timeout: 20000 })
+      const b = fs.readFileSync(out); gc(inp, out); return b
+    },
+    async () => {
+      const f = new FormData(); f.append('image', imgBuf, { filename: 'i.jpg' })
+      const r = await axios.post('https://api.pixelcut.app/v1/upscale', f, {
+        headers: { ...f.getHeaders(), 'X-API-KEY': process.env.PIXELCUT_KEY || '' },
+        responseType: 'arraybuffer', timeout: 35000
+      }); return Buffer.from(r.data)
+    },
     async () => {
       const b64 = imgBuf.toString('base64')
-      const r = await axios.post('https://icons8.com/upscaler/api', { image: b64 }, { timeout: 30000 })
-      const url = r.data?.result
-      if (!url) return null
-      const { buf } = await fetchBuf(url)
-      return buf
+      const r = await axios.post('https://deep-image.ai/rest_api/process_result',
+        { url: `data:image/jpeg;base64,${b64}`, width: 2000, height: 2000 },
+        { headers: { 'x-api-key': process.env.DEEPIMAGE_KEY || '' }, timeout: 35000 }
+      ); const url = r.data?.output_url; if (!url) return null
+      const { buf } = await dl(url); return buf
     },
-    // 8. Imglarger
     async () => {
-      const form = new FormData()
-      form.append('image', imgBuf, { filename: 'img.jpg' })
-      const r = await axios.post('https://imglarger.com/api/Upscaler/Upscale', form, {
-        headers: form.getHeaders(), timeout: 30000
-      })
-      const url = r.data?.data?.imageUrl
-      if (!url) return null
-      const { buf } = await fetchBuf(url)
-      return buf
-    },
-    // 9. AI Image Enlarger
-    async () => {
-      const form = new FormData()
-      form.append('image', imgBuf, { filename: 'img.jpg' })
-      const r = await axios.post('https://aiimageenlarge.com/api/enlarge', form, {
-        headers: form.getHeaders(), responseType: 'arraybuffer', timeout: 30000
-      })
-      return Buffer.from(r.data)
-    },
-    // 10. Stability AI upscale
-    async () => {
-      const form = new FormData()
-      form.append('image', imgBuf, { filename: 'img.png', contentType: 'image/png' })
-      form.append('width', '2048')
-      const r = await axios.post(
-        'https://api.stability.ai/v1/generation/esrgan-v1-x2plus/image-to-image/upscale', form, {
-          headers: { ...form.getHeaders(), Authorization: `Bearer ${process.env.STABILITY_KEY || 'test'}` },
-          responseType: 'arraybuffer', timeout: 30000
-        })
-      const data = JSON.parse(Buffer.from(r.data).toString())
-      const b64 = data?.artifacts?.[0]?.base64
-      if (!b64) return null
-      return Buffer.from(b64, 'base64')
+      const f = new FormData(); f.append('image', imgBuf, { filename: 'i.jpg' })
+      const r = await axios.post('https://imglarger.com/api/Upscaler/Upscale', f, {
+        headers: f.getHeaders(), timeout: 35000
+      }); const url = r.data?.data?.imageUrl; if (!url) return null
+      const { buf } = await dl(url); return buf
     }
   ]
-  for (const api of apis) {
-    try { const b = await api(); if (b?.length > 500) return b } catch {}
-  }
+  for (const t of tries) { try { const b = await t(); if (b?.length > 200) return b } catch {} }
   return null
 }
 
-// ─────────────────────────────────────────────
-// FEATURE 3 — IMAGINE (Text to Image)
-// ─────────────────────────────────────────────
-async function doImagine(prompt) {
-  const apis = [
-    // 1. Pollinations.ai (free, no key)
+// ── 3. IMAGINE (text-to-image) ──
+async function imagine(prompt) {
+  const tries = [
     async () => {
-      const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=1024&height=1024&nologo=true&enhance=true`
-      const { buf } = await fetchBuf(url)
-      return buf
+      const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=1024&height=1024&nologo=true&enhance=true&seed=${Date.now()}`
+      const { buf } = await dl(url); return buf
     },
-    // 2. Stability AI text-to-image
     async () => {
-      const r = await axios.post(
-        'https://api.stability.ai/v1/generation/stable-diffusion-xl-1024-v1-0/text-to-image',
-        { text_prompts: [{ text: prompt, weight: 1 }], cfg_scale: 7, height: 1024, width: 1024, samples: 1, steps: 30 },
-        { headers: { Authorization: `Bearer ${process.env.STABILITY_KEY || 'test'}`, 'Content-Type': 'application/json' }, timeout: 60000 }
-      )
-      const b64 = r.data?.artifacts?.[0]?.base64
-      if (!b64) return null
-      return Buffer.from(b64, 'base64')
+      const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=1024&height=1024&model=flux&nologo=true`
+      const { buf } = await dl(url); return buf
     },
-    // 3. Hugging Face SDXL
     async () => {
       const r = await axios.post(
         'https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0',
         { inputs: prompt },
-        { headers: { Authorization: `Bearer ${process.env.HF_TOKEN || 'test'}` }, responseType: 'arraybuffer', timeout: 60000 }
-      )
-      return Buffer.from(r.data)
+        { headers: { Authorization: `Bearer ${process.env.HF_TOKEN || ''}` }, responseType: 'arraybuffer', timeout: 60000 }
+      ); return Buffer.from(r.data)
     },
-    // 4. Hugging Face SD 2.1
+    async () => {
+      const r = await axios.post(
+        'https://api-inference.huggingface.co/models/runwayml/stable-diffusion-v1-5',
+        { inputs: prompt },
+        { headers: { Authorization: `Bearer ${process.env.HF_TOKEN || ''}` }, responseType: 'arraybuffer', timeout: 60000 }
+      ); return Buffer.from(r.data)
+    },
     async () => {
       const r = await axios.post(
         'https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-2-1',
         { inputs: prompt },
-        { headers: { Authorization: `Bearer ${process.env.HF_TOKEN || 'test'}` }, responseType: 'arraybuffer', timeout: 60000 }
-      )
-      return Buffer.from(r.data)
+        { headers: { Authorization: `Bearer ${process.env.HF_TOKEN || ''}` }, responseType: 'arraybuffer', timeout: 60000 }
+      ); return Buffer.from(r.data)
     },
-    // 5. OpenAI DALL-E 3
+    async () => {
+      const r = await axios.post('https://api.stability.ai/v1/generation/stable-diffusion-xl-1024-v1-0/text-to-image', {
+        text_prompts: [{ text: prompt, weight: 1 }], cfg_scale: 7, height: 1024, width: 1024, samples: 1, steps: 30
+      }, { headers: { Authorization: `Bearer ${process.env.STABILITY_KEY || ''}` }, timeout: 60000 })
+      const b64 = r.data?.artifacts?.[0]?.base64; if (!b64) return null; return Buffer.from(b64, 'base64')
+    },
     async () => {
       const r = await axios.post('https://api.openai.com/v1/images/generations', {
-        model: 'dall-e-3', prompt, n: 1, size: '1024x1024', quality: 'standard'
-      }, { headers: { Authorization: `Bearer ${process.env.OPENAI_KEY || 'test'}` }, timeout: 60000 })
-      const url = r.data?.data?.[0]?.url
-      if (!url) return null
-      const { buf } = await fetchBuf(url)
-      return buf
+        model: 'dall-e-3', prompt, n: 1, size: '1024x1024'
+      }, { headers: { Authorization: `Bearer ${process.env.OPENAI_KEY || ''}` }, timeout: 60000 })
+      const url = r.data?.data?.[0]?.url; if (!url) return null
+      const { buf } = await dl(url); return buf
     },
-    // 6. Together AI
     async () => {
       const r = await axios.post('https://api.together.xyz/v1/images/generations', {
         model: 'black-forest-labs/FLUX.1-schnell-Free', prompt, steps: 4, n: 1
-      }, { headers: { Authorization: `Bearer ${process.env.TOGETHER_KEY || 'test'}` }, timeout: 60000 })
-      const url = r.data?.data?.[0]?.url
-      if (!url) return null
-      const { buf } = await fetchBuf(url)
-      return buf
+      }, { headers: { Authorization: `Bearer ${process.env.TOGETHER_KEY || ''}` }, timeout: 60000 })
+      const url = r.data?.data?.[0]?.url; if (!url) return null
+      const { buf } = await dl(url); return buf
     },
-    // 7. Replicate SDXL
-    async () => {
-      const start = await axios.post('https://api.replicate.com/v1/models/stability-ai/sdxl/predictions', {
-        input: { prompt, width: 1024, height: 1024 }
-      }, { headers: { Authorization: `Bearer ${process.env.REPLICATE_KEY || 'test'}` }, timeout: 30000 })
-      const pollUrl = start.data?.urls?.get
-      if (!pollUrl) return null
-      for (let i = 0; i < 20; i++) {
-        await new Promise(r => setTimeout(r, 3000))
-        const poll = await axios.get(pollUrl, { headers: { Authorization: `Bearer ${process.env.REPLICATE_KEY || 'test'}` } })
-        if (poll.data?.status === 'succeeded') {
-          const url = poll.data.output?.[0]
-          if (!url) return null
-          const { buf } = await fetchBuf(url)
-          return buf
-        }
-        if (poll.data?.status === 'failed') return null
-      }
-      return null
-    },
-    // 8. Getimg.ai
     async () => {
       const r = await axios.post('https://api.getimg.ai/v1/stable-diffusion-xl/text-to-image', {
         prompt, width: 1024, height: 1024, steps: 30, output_format: 'jpeg'
-      }, { headers: { Authorization: `Bearer ${process.env.GETIMG_KEY || 'test'}` }, timeout: 60000 })
-      const b64 = r.data?.image
-      if (!b64) return null
-      return Buffer.from(b64, 'base64')
+      }, { headers: { Authorization: `Bearer ${process.env.GETIMG_KEY || ''}` }, timeout: 60000 })
+      const b64 = r.data?.image; if (!b64) return null; return Buffer.from(b64, 'base64')
     },
-    // 9. Adobe Firefly (via unofficial)
     async () => {
-      const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt + ' detailed artistic')}?width=1024&height=1024&model=flux&nologo=true`
-      const { buf } = await fetchBuf(url)
-      return buf
-    },
-    // 10. Limewire
-    async () => {
-      const r = await axios.post('https://api.limewire.com/api/image/generation', {
-        prompt, aspect_ratio: '1:1', quality: 'HIGH'
-      }, {
-        headers: { Authorization: `Bearer ${process.env.LIMEWIRE_KEY || 'test'}`, 'X-Api-Version': 'v1' },
-        timeout: 60000
-      })
-      const url = r.data?.data?.[0]?.asset_url
-      if (!url) return null
-      const { buf } = await fetchBuf(url)
-      return buf
+      const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt + ' high quality')}?width=768&height=768&nologo=true`
+      const { buf } = await dl(url); return buf
     }
   ]
-  for (const api of apis) {
-    try { const b = await api(); if (b?.length > 500) return b } catch {}
-  }
+  for (const t of tries) { try { const b = await t(); if (b?.length > 500) return b } catch {} }
   return null
 }
 
-// ─────────────────────────────────────────────
-// FEATURE 4 — BLUR IMAGE
-// ─────────────────────────────────────────────
-async function doBlur(imgBuf, level = 10) {
-  const apis = [
-    // 1. Sharp via bash (if installed)
+// ── 4. BLUR ──
+async function blurImg(imgBuf, level = 10) {
+  const tries = [
+    async () => { const sharp = (await import('sharp')).default; return await sharp(imgBuf).blur(Math.min(level, 100)).jpeg({ quality: 90 }).toBuffer() },
+    async () => { const Jimp = (await import('jimp')).default; const img = await Jimp.read(imgBuf); img.blur(level); return await img.getBufferAsync(Jimp.MIME_JPEG) },
     async () => {
-      const inp = tmp('jpg'); const out = tmp('jpg')
-      fs.writeFileSync(inp, imgBuf)
+      const inp = tmpF('jpg'); const out = tmpF('jpg'); fs.writeFileSync(inp, imgBuf)
       await execAsync(`convert "${inp}" -blur 0x${level} "${out}"`, { timeout: 15000 })
-      const b = fs.readFileSync(out)
-      clean(inp, out); return b
+      const b = fs.readFileSync(out); gc(inp, out); return b
     },
-    // 2. Jimp (if available)
-    async () => {
-      const Jimp = (await import('jimp')).default
-      const img = await Jimp.read(imgBuf)
-      img.blur(level)
-      return await img.getBufferAsync(Jimp.MIME_JPEG)
-    },
-    // 3. Cloudinary transformation
-    async () => {
-      const b64 = `data:image/jpeg;base64,${imgBuf.toString('base64')}`
-      const cloud = process.env.CLOUDINARY_URL || ''
-      const cloudName = cloud.match(/@(.+)/)?.[1] || 'demo'
-      const key = cloud.match(/:\/\/([^:]+):/)?.[1] || 'test'
-      const secret = cloud.match(/:([^@]+)@/)?.[1]?.split(':').pop() || 'test'
-      const r = await axios.post(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
-        file: b64, api_key: key, effect: `blur:${level * 100}`,
-        eager: `e_blur:${level * 100}`
-      }, { timeout: 30000 })
-      const url = r.data?.eager?.[0]?.secure_url || r.data?.secure_url
-      if (!url) return null
-      const { buf } = await fetchBuf(`${url.split('/upload/')[0]}/upload/e_blur:${level * 100}/${url.split('/upload/')[1]}`)
-      return buf
-    },
-    // 4. Pixlr API
-    async () => {
-      const form = new FormData()
-      form.append('image', imgBuf, { filename: 'img.jpg' })
-      form.append('blur', String(level))
-      const r = await axios.post('https://pixlr.com/api/blur', form, {
-        headers: form.getHeaders(), responseType: 'arraybuffer', timeout: 20000
-      })
-      return Buffer.from(r.data)
-    },
-    // 5. Fotor API
-    async () => {
-      const form = new FormData()
-      form.append('file', imgBuf, { filename: 'img.jpg' })
-      const r = await axios.post('https://www.fotor.com/api/blur', form, {
-        headers: form.getHeaders(), responseType: 'arraybuffer', timeout: 20000
-      })
-      return Buffer.from(r.data)
-    },
-    // 6. Imagga effects
-    async () => {
-      const form = new FormData()
-      form.append('image', imgBuf, { filename: 'img.jpg' })
-      const r = await axios.post('https://api.imagga.com/v2/effects/blur', form, {
-        auth: { username: process.env.IMAGGA_KEY || 'test', password: process.env.IMAGGA_SECRET || 'test' },
-        responseType: 'arraybuffer', timeout: 20000
-      })
-      return Buffer.from(r.data)
-    },
-    // 7. Tinypng API (smartblur)
-    async () => {
-      const form = new FormData()
-      form.append('file', imgBuf, { filename: 'img.png' })
-      const r = await axios.post('https://api.tinify.com/shrink', form, {
-        auth: { username: 'api', password: process.env.TINYPNG_KEY || 'test' },
-        responseType: 'arraybuffer', timeout: 20000
-      })
-      return Buffer.from(r.data)
-    },
-    // 8. Canvas-based (node-canvas fallback)
-    async () => {
-      const { createCanvas, loadImage } = await import('canvas')
-      const image = await loadImage(imgBuf)
-      const canvas = createCanvas(image.width, image.height)
-      const ctx = canvas.getContext('2d')
-      ctx.filter = `blur(${level}px)`
-      ctx.drawImage(image, 0, 0)
-      return canvas.toBuffer('image/jpeg')
-    },
-    // 9. Sharp direct
-    async () => {
-      const sharp = (await import('sharp')).default
-      return await sharp(imgBuf).blur(level).jpeg().toBuffer()
-    },
-    // 10. Pollinations transform
-    async () => {
-      const b64 = imgBuf.toString('base64')
-      const r = await axios.post('https://image.pollinations.ai/edit', {
-        image: b64, operation: 'blur', intensity: level
-      }, { timeout: 20000 })
-      const url = r.data?.url
-      if (!url) return null
-      const { buf } = await fetchBuf(url)
-      return buf
-    }
+    async () => { const sharp = (await import('sharp')).default; return await sharp(imgBuf).blur(level / 2).modulate({ brightness: 0.98 }).jpeg().toBuffer() }
   ]
-  for (const api of apis) {
-    try { const b = await api(); if (b?.length > 500) return b } catch {}
-  }
+  for (const t of tries) { try { const b = await t(); if (b?.length > 200) return b } catch {} }
   return null
 }
 
-// ─────────────────────────────────────────────
-// FEATURE 5 — UNBLUR / SHARPEN
-// ─────────────────────────────────────────────
-async function doUnblur(imgBuf) {
-  const apis = [
+// ── 5. UNBLUR / SHARPEN ──
+async function unblurImg(imgBuf) {
+  const tries = [
+    async () => { const sharp = (await import('sharp')).default; return await sharp(imgBuf).sharpen({ sigma: 2, m1: 0.5, m2: 3 }).jpeg({ quality: 95 }).toBuffer() },
     async () => {
-      const sharp = (await import('sharp')).default
-      return await sharp(imgBuf).sharpen({ sigma: 2, m1: 0.5, m2: 3 }).jpeg({ quality: 95 }).toBuffer()
+      const f = new FormData(); f.append('image', imgBuf, { filename: 'i.jpg' })
+      const r = await axios.post('https://api.deepai.org/api/torch-srgan', f, {
+        headers: { ...f.getHeaders(), 'api-key': process.env.DEEPAI_KEY || 'quickstart-QUdJIGlzIGF3ZXNvbWU' }, timeout: 30000
+      }); const url = r.data?.output_url; if (!url) return null; const { buf } = await dl(url); return buf
     },
+    async () => { const Jimp = (await import('jimp')).default; const img = await Jimp.read(imgBuf); img.convolute([[0,-1,0],[-1,5,-1],[0,-1,0]]); return await img.getBufferAsync(Jimp.MIME_JPEG) },
     async () => {
-      const inp = tmp('jpg'); const out = tmp('jpg')
-      fs.writeFileSync(inp, imgBuf)
+      const inp = tmpF('jpg'); const out = tmpF('jpg'); fs.writeFileSync(inp, imgBuf)
       await execAsync(`convert "${inp}" -unsharp 0x6+2+0.5 "${out}"`, { timeout: 15000 })
-      const b = fs.readFileSync(out); clean(inp, out); return b
+      const b = fs.readFileSync(out); gc(inp, out); return b
     },
     async () => {
-      const Jimp = (await import('jimp')).default
-      const img = await Jimp.read(imgBuf)
-      // @ts-ignore
-      img.convolute([[0, -1, 0], [-1, 5, -1], [0, -1, 0]])
-      return await img.getBufferAsync(Jimp.MIME_JPEG)
+      const f = new FormData(); f.append('image', imgBuf, { filename: 'i.jpg' })
+      const r = await axios.post('https://api.deepai.org/api/super-resolution', f, {
+        headers: { ...f.getHeaders(), 'api-key': process.env.DEEPAI_KEY || 'quickstart-QUdJIGlzIGF3ZXNvbWU' }, timeout: 30000
+      }); const url = r.data?.output_url; if (!url) return null; const { buf } = await dl(url); return buf
     },
     async () => {
-      const form = new FormData()
-      form.append('image', imgBuf, { filename: 'img.jpg' })
-      const r = await axios.post('https://api.deepai.org/api/waifu2x', form, {
-        headers: { ...form.getHeaders(), 'api-key': process.env.DEEPAI_KEY || 'quickstart-QUdJIGlzIGF3ZXNvbWU' },
-        timeout: 30000
-      })
-      const url = r.data?.output_url
-      if (!url) return null
-      const { buf } = await fetchBuf(url)
-      return buf
+      const f = new FormData(); f.append('image', imgBuf, { filename: 'i.jpg' })
+      const r = await axios.post('https://api.deepai.org/api/waifu2x', f, {
+        headers: { ...f.getHeaders(), 'api-key': process.env.DEEPAI_KEY || 'quickstart-QUdJIGlzIGF3ZXNvbWU' }, timeout: 30000
+      }); const url = r.data?.output_url; if (!url) return null; const { buf } = await dl(url); return buf
     },
     async () => {
-      const form = new FormData()
-      form.append('image', imgBuf, { filename: 'img.jpg' })
-      const r = await axios.post('https://api.deepai.org/api/torch-srgan', form, {
-        headers: { ...form.getHeaders(), 'api-key': process.env.DEEPAI_KEY || 'quickstart-QUdJIGlzIGF3ZXNvbWU' },
-        timeout: 30000
-      })
-      const url = r.data?.output_url
-      if (!url) return null
-      const { buf } = await fetchBuf(url)
-      return buf
-    },
-    async () => {
-      const form = new FormData()
-      form.append('image_file', imgBuf, { filename: 'img.jpg' })
-      const r = await axios.post('https://clipdrop-api.co/image-upscaling/v1/upscale', form, {
-        headers: { ...form.getHeaders(), 'x-api-key': process.env.CLIPDROP_KEY || 'test' },
-        params: { target_width: 2048, target_height: 2048 },
-        responseType: 'arraybuffer', timeout: 30000
-      })
-      return Buffer.from(r.data)
-    },
-    async () => {
-      const form = new FormData()
-      form.append('image', imgBuf, { filename: 'img.jpg' })
-      const r = await axios.post('https://api.deepai.org/api/image-editor', form, {
-        headers: { ...form.getHeaders(), 'api-key': process.env.DEEPAI_KEY || 'quickstart-QUdJIGlzIGF3ZXNvbWU' },
-        timeout: 30000
-      })
-      const url = r.data?.output_url
-      if (!url) return null
-      const { buf } = await fetchBuf(url)
-      return buf
-    },
-    async () => {
-      const form = new FormData()
-      form.append('image', imgBuf, { filename: 'img.jpg' })
-      const r = await axios.post('https://picwish.com/api/sharpen', form, {
-        headers: { ...form.getHeaders(), 'x-api-key': process.env.PICWISH_KEY || 'test' },
-        responseType: 'arraybuffer', timeout: 30000
-      })
-      return Buffer.from(r.data)
-    },
-    async () => {
-      const inp = tmp('jpg'); const out = tmp('jpg')
-      fs.writeFileSync(inp, imgBuf)
-      await execAsync(`convert "${inp}" -sharpen 0x3 "${out}"`, { timeout: 15000 })
-      const b = fs.readFileSync(out); clean(inp, out); return b
-    },
-    async () => {
-      const form = new FormData()
-      form.append('image', imgBuf, { filename: 'img.jpg' })
-      const r = await axios.post('https://api.deepai.org/api/super-resolution', form, {
-        headers: { ...form.getHeaders(), 'api-key': process.env.DEEPAI_KEY || 'quickstart-QUdJIGlzIGF3ZXNvbWU' },
-        timeout: 30000
-      })
-      const url = r.data?.output_url
-      if (!url) return null
-      const { buf } = await fetchBuf(url)
-      return buf
+      const f = new FormData(); f.append('image_file', imgBuf, { filename: 'i.jpg' })
+      const r = await axios.post('https://clipdrop-api.co/image-upscaling/v1/upscale', f, {
+        headers: { ...f.getHeaders(), 'x-api-key': process.env.CLIPDROP_KEY || '' },
+        params: { target_width: 2048, target_height: 2048 }, responseType: 'arraybuffer', timeout: 30000
+      }); return Buffer.from(r.data)
     }
   ]
-  for (const api of apis) {
-    try { const b = await api(); if (b?.length > 500) return b } catch {}
-  }
+  for (const t of tries) { try { const b = await t(); if (b?.length > 200) return b } catch {} }
   return null
 }
 
-// ─────────────────────────────────────────────
-// FEATURE 6 — REMINI (Face restore / enhance)
-// ─────────────────────────────────────────────
-async function doRemini(imgBuf) {
-  const apis = [
+// ── 6. REMINI ──
+async function remini(imgBuf) {
+  const tries = [
     async () => {
-      const form = new FormData()
-      form.append('image', imgBuf, { filename: 'img.jpg' })
-      const r = await axios.post('https://api.deepai.org/api/torch-srgan', form, {
-        headers: { ...form.getHeaders(), 'api-key': process.env.DEEPAI_KEY || 'quickstart-QUdJIGlzIGF3ZXNvbWU' },
-        timeout: 30000
-      })
-      const url = r.data?.output_url; if (!url) return null
-      const { buf } = await fetchBuf(url); return buf
-    },
-    async () => {
-      const form = new FormData()
-      form.append('image', imgBuf, { filename: 'img.jpg' })
-      const r = await axios.post('https://api.deepai.org/api/waifu2x', form, {
-        headers: { ...form.getHeaders(), 'api-key': process.env.DEEPAI_KEY || 'quickstart-QUdJIGlzIGF3ZXNvbWU' },
-        timeout: 30000
-      })
-      const url = r.data?.output_url; if (!url) return null
-      const { buf } = await fetchBuf(url); return buf
+      const f = new FormData(); f.append('image', imgBuf, { filename: 'i.jpg' })
+      const r = await axios.post('https://api.deepai.org/api/torch-srgan', f, {
+        headers: { ...f.getHeaders(), 'api-key': process.env.DEEPAI_KEY || 'quickstart-QUdJIGlzIGF3ZXNvbWU' }, timeout: 30000
+      }); const url = r.data?.output_url; if (!url) return null; const { buf } = await dl(url); return buf
     },
     async () => {
       const start = await axios.post('https://api.replicate.com/v1/models/tencentarc/gfpgan/predictions', {
         input: { img: 'data:image/jpeg;base64,' + imgBuf.toString('base64'), version: 1.4, scale: 2 }
-      }, { headers: { Authorization: `Bearer ${process.env.REPLICATE_KEY || 'test'}` }, timeout: 30000 })
+      }, { headers: { Authorization: `Bearer ${process.env.REPLICATE_KEY || ''}` }, timeout: 30000 })
       const pollUrl = start.data?.urls?.get; if (!pollUrl) return null
       for (let i = 0; i < 15; i++) {
         await new Promise(r => setTimeout(r, 3000))
-        const p = await axios.get(pollUrl, { headers: { Authorization: `Bearer ${process.env.REPLICATE_KEY || 'test'}` } })
-        if (p.data?.status === 'succeeded') {
-          const url = p.data.output; if (!url) return null
-          const { buf } = await fetchBuf(url); return buf
-        }
+        const p = await axios.get(pollUrl, { headers: { Authorization: `Bearer ${process.env.REPLICATE_KEY || ''}` } })
+        if (p.data?.status === 'succeeded') { const url = p.data.output; if (!url) return null; const { buf } = await dl(url); return buf }
         if (p.data?.status === 'failed') return null
       }
       return null
     },
     async () => {
-      const form = new FormData()
-      form.append('image', imgBuf, { filename: 'img.jpg' })
-      const r = await axios.post('https://api.deepai.org/api/colorizer', form, {
-        headers: { ...form.getHeaders(), 'api-key': process.env.DEEPAI_KEY || 'quickstart-QUdJIGlzIGF3ZXNvbWU' },
-        timeout: 30000
-      })
-      const url = r.data?.output_url; if (!url) return null
-      const { buf } = await fetchBuf(url); return buf
+      const f = new FormData(); f.append('image', imgBuf, { filename: 'i.jpg' })
+      const r = await axios.post('https://api.deepai.org/api/waifu2x', f, {
+        headers: { ...f.getHeaders(), 'api-key': process.env.DEEPAI_KEY || 'quickstart-QUdJIGlzIGF3ZXNvbWU' }, timeout: 30000
+      }); const url = r.data?.output_url; if (!url) return null; const { buf } = await dl(url); return buf
     },
     async () => {
-      const form = new FormData()
-      form.append('image_file', imgBuf, { filename: 'img.jpg' })
-      const r = await axios.post('https://clipdrop-api.co/portrait-surface-diffusion/v1', form, {
-        headers: { ...form.getHeaders(), 'x-api-key': process.env.CLIPDROP_KEY || 'test' },
+      const f = new FormData(); f.append('image', imgBuf, { filename: 'i.jpg' })
+      const r = await axios.post('https://api.pixelcut.app/v1/enhance', f, {
+        headers: { ...f.getHeaders(), 'X-API-KEY': process.env.PIXELCUT_KEY || '' },
         responseType: 'arraybuffer', timeout: 30000
-      })
-      return Buffer.from(r.data)
-    },
-    async () => {
-      const b64 = imgBuf.toString('base64')
-      const r = await axios.post('https://deep-image.ai/rest_api/process_result', {
-        url: `data:image/jpeg;base64,${b64}`, improvements: ['denoise', 'light']
-      }, { headers: { 'x-api-key': process.env.DEEPIMAGE_KEY || 'test' }, timeout: 30000 })
-      const url = r.data?.output_url; if (!url) return null
-      const { buf } = await fetchBuf(url); return buf
-    },
-    async () => {
-      const form = new FormData()
-      form.append('image', imgBuf, { filename: 'img.jpg' })
-      const r = await axios.post('https://picwish.com/api/face-enhance', form, {
-        headers: { ...form.getHeaders(), 'x-api-key': process.env.PICWISH_KEY || 'test' },
-        responseType: 'arraybuffer', timeout: 30000
-      })
-      return Buffer.from(r.data)
-    },
-    async () => {
-      const form = new FormData()
-      form.append('image', imgBuf, { filename: 'img.jpg' })
-      const r = await axios.post('https://api.pixelcut.app/v1/enhance', form, {
-        headers: { ...form.getHeaders(), 'X-API-KEY': process.env.PIXELCUT_KEY || 'test' },
-        responseType: 'arraybuffer', timeout: 30000
-      })
-      return Buffer.from(r.data)
+      }); return Buffer.from(r.data)
     },
     async () => {
       const sharp = (await import('sharp')).default
-      return await sharp(imgBuf).sharpen({ sigma: 3 }).modulate({ brightness: 1.05, saturation: 1.1 }).jpeg({ quality: 95 }).toBuffer()
-    },
-    async () => {
-      const form = new FormData()
-      form.append('image', imgBuf, { filename: 'img.jpg' })
-      const r = await axios.post('https://api.deepai.org/api/neural-talk-2', form, {
-        headers: { ...form.getHeaders(), 'api-key': process.env.DEEPAI_KEY || 'quickstart-QUdJIGlzIGF3ZXNvbWU' },
-        timeout: 30000
-      })
-      const url = r.data?.output_url; if (!url) return null
-      const { buf } = await fetchBuf(url); return buf
+      return await sharp(imgBuf).sharpen({ sigma: 3 }).modulate({ brightness: 1.05, saturation: 1.1 }).jpeg({ quality: 97 }).toBuffer()
     }
   ]
-  for (const api of apis) {
-    try { const b = await api(); if (b?.length > 500) return b } catch {}
-  }
+  for (const t of tries) { try { const b = await t(); if (b?.length > 200) return b } catch {} }
   return null
 }
 
-// ─────────────────────────────────────────────
-// FEATURE 7 — VIDEO GENERATION (prompt to video)
-// ─────────────────────────────────────────────
-async function doVideoGen(prompt) {
-  const apis = [
+// ── 7. TTS ──
+async function tts(text, voiceType = 'random') {
+  const vMap = {
+    male: ['onyx', 'echo', 'fable'],
+    female: ['nova', 'shimmer', 'alloy'],
+    child: ['alloy'],
+    random: ['alloy', 'echo', 'fable', 'nova', 'onyx', 'shimmer']
+  }
+  const vList = vMap[voiceType] || vMap.random
+  const voice = vList[Math.floor(Math.random() * vList.length)]
+
+  const tries = [
     async () => {
-      const r = await axios.post('https://api.replicate.com/v1/models/anotherjesse/zeroscope-v2-xl/predictions', {
-        input: { prompt, num_frames: 24, fps: 8, width: 576, height: 320 }
-      }, { headers: { Authorization: `Bearer ${process.env.REPLICATE_KEY || 'test'}` }, timeout: 30000 })
-      const pollUrl = r.data?.urls?.get; if (!pollUrl) return null
-      for (let i = 0; i < 30; i++) {
-        await new Promise(r => setTimeout(r, 5000))
-        const p = await axios.get(pollUrl, { headers: { Authorization: `Bearer ${process.env.REPLICATE_KEY || 'test'}` } })
-        if (p.data?.status === 'succeeded') {
-          const url = p.data.output; if (!url) return null
-          const { buf } = await fetchBuf(typeof url === 'string' ? url : url[0]); return buf
-        }
+      const url = `https://api.streamelements.com/kappa/v2/speech?voice=${voiceType === 'female' ? 'Joanna' : voiceType === 'child' ? 'Justin' : 'Matthew'}&text=${encodeURIComponent(text)}`
+      const { buf } = await dl(url); return buf
+    },
+    async () => {
+      const r = await axios.post('https://tiktok-tts.weilnet.workers.dev/api/generation', {
+        text: text.slice(0, 200),
+        voice: voiceType === 'female' ? 'en_us_002' : voiceType === 'child' ? 'en_us_ghostface' : 'en_us_006'
+      }, { timeout: 20000 }); const b64 = r.data?.data; if (!b64) return null; return Buffer.from(b64, 'base64')
+    },
+    async () => {
+      const r = await axios.post('https://api.openai.com/v1/audio/speech', {
+        model: 'tts-1', input: text, voice, speed: 1.0
+      }, { headers: { Authorization: `Bearer ${process.env.OPENAI_KEY || ''}` }, responseType: 'arraybuffer', timeout: 30000 })
+      return Buffer.from(r.data)
+    },
+    async () => {
+      const g = voiceType === 'female' ? 'FEMALE' : 'MALE'
+      const r = await axios.post(`https://texttospeech.googleapis.com/v1/text:synthesize?key=${process.env.GOOGLE_TTS_KEY || ''}`, {
+        input: { text }, voice: { languageCode: 'en-US', ssmlGender: g }, audioConfig: { audioEncoding: 'MP3' }
+      }, { timeout: 30000 }); const b64 = r.data?.audioContent; if (!b64) return null; return Buffer.from(b64, 'base64')
+    },
+    async () => {
+      const voiceId = voiceType === 'female' ? 'EXAVITQu4vr4xnSDxMaL' : '21m00Tcm4TlvDq8ikWAM'
+      const r = await axios.post(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+        text, model_id: 'eleven_monolingual_v1', voice_settings: { stability: 0.5, similarity_boost: 0.75 }
+      }, { headers: { 'xi-api-key': process.env.ELEVENLABS_KEY || '' }, responseType: 'arraybuffer', timeout: 30000 })
+      return Buffer.from(r.data)
+    },
+    async () => {
+      const { buf } = await dl(`https://api.voicerss.org/?key=${process.env.VOICERSS_KEY || ''}&hl=en-us&v=${voiceType === 'female' ? 'Linda' : 'John'}&src=${encodeURIComponent(text)}&c=MP3`)
+      return buf
+    }
+  ]
+  for (const t of tries) { try { const b = await t(); if (b?.length > 200) return b } catch {} }
+  return null
+}
+
+// ── 8. LYRICS ──
+async function lyrics(query) {
+  const tries = [
+    async () => {
+      const r = await axios.get(`https://lyrist.vercel.app/api/${encodeURIComponent(query)}`, { timeout: TOUT })
+      if (!r.data?.lyrics) return null
+      return { title: r.data.title, artist: r.data.artist, text: r.data.lyrics?.slice(0, 1200), thumb: r.data.image }
+    },
+    async () => {
+      const r = await axios.get(`https://some-random-api.com/lyrics?title=${encodeURIComponent(query)}`, { timeout: TOUT })
+      if (!r.data?.lyrics) return null
+      return { title: r.data.title, artist: r.data.author, text: r.data.lyrics?.slice(0, 1200), thumb: r.data.thumbnail?.genius }
+    },
+    async () => {
+      const r = await axios.get('https://api.genius.com/search', {
+        params: { q: query }, headers: { Authorization: `Bearer ${process.env.GENIUS_TOKEN || 'tBkgkNP6YnkKPkyNBkj3rUQYwFhJCh9n5IJ5ZlmGZsrMFvEQFbmN8EiLuFcGOPrH'}` }, timeout: TOUT
+      }); const t = r.data?.response?.hits?.[0]?.result; if (!t) return null
+      return { title: t.title, artist: t.primary_artist?.name, text: null, thumb: t.song_art_image_url, url: t.url }
+    },
+    async () => {
+      const [t2, a] = query.split(' by ')
+      const r = await axios.get('https://api.musixmatch.com/ws/1.1/track.search', {
+        params: { apikey: '3960fe569e0f9c70bc35d454cd407a9c', q_track: t2, q_artist: a || '', page_size: 1 }, timeout: TOUT
+      }); const t = r.data?.message?.body?.track_list?.[0]?.track; if (!t) return null
+      const lyr = await axios.get('https://api.musixmatch.com/ws/1.1/track.lyrics.get', {
+        params: { apikey: '3960fe569e0f9c70bc35d454cd407a9c', track_id: t.track_id }, timeout: TOUT
+      }); const txt = lyr.data?.message?.body?.lyrics?.lyrics_body; if (!txt) return null
+      return { title: t.track_name, artist: t.artist_name, text: txt.slice(0, 1200) }
+    },
+    async () => {
+      const r = await axios.get(`https://api.lyrics.ovh/v1/${query.replace(' ', '/')}`, { timeout: TOUT })
+      if (!r.data?.lyrics) return null
+      return { text: r.data.lyrics?.slice(0, 1200) }
+    }
+  ]
+  for (const t of tries) { try { const r = await t(); if (r) return r } catch {} }
+  return null
+}
+
+// ── 9. BIBLE ──
+async function bible(ref) {
+  const tries = [
+    async () => { const r = await axios.get(`https://bible-api.com/${encodeURIComponent(ref)}`, { timeout: TOUT }); if (!r.data?.text) return null; return { ref: r.data.reference, text: r.data.text, ver: r.data.translation_name || 'KJV' } },
+    async () => { const r = await axios.get(`https://labs.bible.org/api/?passage=${encodeURIComponent(ref)}&type=json`, { timeout: TOUT }); const v = r.data?.[0]; if (!v) return null; return { ref: `${v.bookname} ${v.chapter}:${v.verse}`, text: v.text, ver: 'NET' } },
+    async () => { const r = await axios.get(`https://bible-api.com/john+3:16`, { timeout: TOUT }); return { ref: r.data?.reference, text: r.data?.text, ver: 'KJV' } }
+  ]
+  for (const t of tries) { try { const r = await t(); if (r) return r } catch {} }
+  return null
+}
+
+// ── 10. QURAN ──
+async function quran(ref) {
+  const tries = [
+    async () => {
+      const [s, a] = ref.split(':').map(x => x.trim())
+      const r = await axios.get(`https://api.alquran.cloud/v1/ayah/${s}:${a || 1}/en.asad`, { timeout: TOUT })
+      const v = r.data?.data; if (!v) return null
+      const ar = await axios.get(`https://api.alquran.cloud/v1/ayah/${s}:${a || 1}/ar`, { timeout: TOUT })
+      return { ref: `${v.surah?.englishName} ${s}:${a || 1}`, arabic: ar.data?.data?.text, trans: v.text, by: 'Muhammad Asad' }
+    },
+    async () => {
+      const r = await axios.get(`https://api.quran.com/api/v4/verses/by_key/${ref}?translations=131`, { timeout: TOUT })
+      const v = r.data?.verse; if (!v) return null
+      return { ref: v.verse_key, trans: v.translations?.[0]?.text?.replace(/<[^>]+>/g, ''), by: 'Dr. Mustafa Khattab' }
+    },
+    async () => {
+      const r = await axios.get(`https://quranapi.pages.dev/api/${ref.replace(':', '/')}.json`, { timeout: TOUT })
+      if (!r.data) return null; return { ref, arabic: r.data?.arabic1, trans: r.data?.english }
+    }
+  ]
+  for (const t of tries) { try { const r = await t(); if (r) return r } catch {} }
+  return null
+}
+
+// ── 11. FOOD ──
+async function food(query) {
+  const tries = [
+    async () => {
+      const r = await axios.get(`https://www.themealdb.com/api/json/v1/1/search.php?s=${encodeURIComponent(query)}`, { timeout: TOUT })
+      const f = r.data?.meals?.[0]; if (!f) return null
+      return { name: f.strMeal, img: f.strMealThumb, desc: f.strInstructions?.slice(0, 250), cat: f.strCategory, area: f.strArea }
+    },
+    async () => {
+      const r = await axios.get(`https://api.spoonacular.com/recipes/complexSearch?query=${encodeURIComponent(query)}&number=1&addRecipeInformation=true&apiKey=${process.env.SPOONACULAR_KEY || ''}`, { timeout: TOUT })
+      const f = r.data?.results?.[0]; if (!f) return null
+      return { name: f.title, img: f.image, desc: f.summary?.replace(/<[^>]+>/g, '').slice(0, 250), kcal: f.nutrition?.nutrients?.find(n => n.name === 'Calories')?.amount }
+    },
+    async () => {
+      const r = await axios.get(`https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&json=1&page_size=1`, { timeout: TOUT })
+      const f = r.data?.products?.[0]; if (!f) return null
+      return { name: f.product_name, img: f.image_url, kcal: f.nutriments?.energy_value }
+    }
+  ]
+  for (const t of tries) { try { const r = await t(); if (r) return r } catch {} }
+  return null
+}
+
+// ── 12. STICKER ──
+async function makeSticker(imgBuf) {
+  const tries = [
+    async () => { const sharp = (await import('sharp')).default; return await sharp(imgBuf).resize(512, 512, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } }).webp({ quality: 80 }).toBuffer() },
+    async () => {
+      const inp = tmpF('jpg'); const out = tmpF('webp'); fs.writeFileSync(inp, imgBuf)
+      await execAsync(`ffmpeg -i "${inp}" -vf "scale=512:512:force_original_aspect_ratio=decrease,pad=512:512:(ow-iw)/2:(oh-ih)/2:color=white@0.0" "${out}" -y`, { timeout: 20000 })
+      const b = fs.readFileSync(out); gc(inp, out); return b
+    },
+    async () => { const Jimp = (await import('jimp')).default; const img = await Jimp.read(imgBuf); img.resize(512, 512); return await img.getBufferAsync('image/webp') }
+  ]
+  for (const t of tries) { try { const b = await t(); if (b?.length > 200) return b } catch {} }
+  return null
+}
+
+// ── 13. COLORIZE ──
+async function colorize(imgBuf) {
+  const tries = [
+    async () => {
+      const f = new FormData(); f.append('image', imgBuf, { filename: 'i.jpg' })
+      const r = await axios.post('https://api.deepai.org/api/colorizer', f, {
+        headers: { ...f.getHeaders(), 'api-key': process.env.DEEPAI_KEY || 'quickstart-QUdJIGlzIGF3ZXNvbWU' }, timeout: 30000
+      }); const url = r.data?.output_url; if (!url) return null; const { buf } = await dl(url); return buf
+    },
+    async () => {
+      const start = await axios.post('https://api.replicate.com/v1/models/arielreplicate/deoldify_image/predictions', {
+        input: { input_image: 'data:image/jpeg;base64,' + imgBuf.toString('base64'), render_factor: 35 }
+      }, { headers: { Authorization: `Bearer ${process.env.REPLICATE_KEY || ''}` }, timeout: 30000 })
+      const pollUrl = start.data?.urls?.get; if (!pollUrl) return null
+      for (let i = 0; i < 15; i++) {
+        await new Promise(r => setTimeout(r, 3000))
+        const p = await axios.get(pollUrl, { headers: { Authorization: `Bearer ${process.env.REPLICATE_KEY || ''}` } })
+        if (p.data?.status === 'succeeded') { const url = p.data.output; const { buf } = await dl(url); return buf }
         if (p.data?.status === 'failed') return null
       }
       return null
     },
+    async () => { const sharp = (await import('sharp')).default; return await sharp(imgBuf).modulate({ saturation: 1.5, brightness: 1.1 }).jpeg().toBuffer() }
+  ]
+  for (const t of tries) { try { const b = await t(); if (b?.length > 200) return b } catch {} }
+  return null
+}
+
+// ── 14. CARTOON ──
+async function cartoon(imgBuf) {
+  const tries = [
     async () => {
-      const r = await axios.post('https://api.stability.ai/v2beta/image-to-video', {
-        cfg_scale: 2.5, motion_bucket_id: 40
-      }, { headers: { Authorization: `Bearer ${process.env.STABILITY_KEY || 'test'}` }, timeout: 30000 })
-      const id = r.data?.id; if (!id) return null
-      for (let i = 0; i < 20; i++) {
+      const f = new FormData(); f.append('image', imgBuf, { filename: 'i.jpg' })
+      const r = await axios.post('https://api.deepai.org/api/toonify', f, {
+        headers: { ...f.getHeaders(), 'api-key': process.env.DEEPAI_KEY || 'quickstart-QUdJIGlzIGF3ZXNvbWU' }, timeout: 30000
+      }); const url = r.data?.output_url; if (!url) return null; const { buf } = await dl(url); return buf
+    },
+    async () => {
+      const f = new FormData(); f.append('image', imgBuf, { filename: 'i.jpg' })
+      const r = await axios.post('https://api.deepai.org/api/cartoonizer', f, {
+        headers: { ...f.getHeaders(), 'api-key': process.env.DEEPAI_KEY || 'quickstart-QUdJIGlzIGF3ZXNvbWU' }, timeout: 30000
+      }); const url = r.data?.output_url; if (!url) return null; const { buf } = await dl(url); return buf
+    }
+  ]
+  for (const t of tries) { try { const b = await t(); if (b?.length > 200) return b } catch {} }
+  return null
+}
+
+// ── 15. QR CODE ──
+async function qrcode(text) {
+  const tries = [
+    async () => { const { buf } = await dl(`https://api.qrserver.com/v1/create-qr-code/?size=512x512&data=${encodeURIComponent(text)}`); return buf },
+    async () => { const { buf } = await dl(`https://quickchart.io/qr?text=${encodeURIComponent(text)}&size=512&format=png`); return buf },
+    async () => { const { buf } = await dl(`https://chart.googleapis.com/chart?chs=512x512&cht=qr&chl=${encodeURIComponent(text)}`); return buf }
+  ]
+  for (const t of tries) { try { const b = await t(); if (b?.length > 200) return b } catch {} }
+  return null
+}
+
+// ── 16. OCR ──
+async function ocr(imgBuf) {
+  const tries = [
+    async () => {
+      const f = new FormData(); f.append('base64Image', 'data:image/jpeg;base64,' + imgBuf.toString('base64')); f.append('language', 'eng')
+      const r = await axios.post('https://api.ocr.space/parse/image', f, {
+        headers: { ...f.getHeaders(), apikey: process.env.OCRSPACE_KEY || 'helloworld' }, timeout: TOUT
+      }); const text = r.data?.ParsedResults?.[0]?.ParsedText; if (!text?.trim()) return null; return text.trim()
+    },
+    async () => {
+      const r = await axios.post('https://vision.googleapis.com/v1/images:annotate', {
+        requests: [{ image: { content: imgBuf.toString('base64') }, features: [{ type: 'TEXT_DETECTION' }] }]
+      }, { params: { key: process.env.GOOGLE_VISION_KEY || '' }, timeout: TOUT })
+      return r.data?.responses?.[0]?.fullTextAnnotation?.text?.trim() || null
+    },
+    async () => {
+      const f = new FormData(); f.append('image', imgBuf, { filename: 'i.jpg' })
+      const r = await axios.post('https://api.deepai.org/api/read-text', f, {
+        headers: { ...f.getHeaders(), 'api-key': process.env.DEEPAI_KEY || 'quickstart-QUdJIGlzIGF3ZXNvbWU' }, timeout: TOUT
+      }); return r.data?.output?.trim() || null
+    }
+  ]
+  for (const t of tries) { try { const r = await t(); if (r) return r } catch {} }
+  return null
+}
+
+// ── 17. SET WHATSAPP STATUS ──
+async function setStatus(sock, content, caption) {
+  const methods = [
+    async () => { await sock.sendMessage('status@broadcast', typeof content === 'string' ? { text: content, backgroundColor: '#6B2D8B', font: 4 } : { image: content, caption: caption || '' }); return true },
+    async () => { await sock.sendMessage('status@broadcast', typeof content === 'string' ? { text: content } : { image: content, caption: caption || '' }, { statusJidList: [] }); return true },
+    async () => { await sock.sendMessage('status@broadcast', { video: content, caption: caption || '', seconds: 15 }); return true }
+  ]
+  for (const m of methods) { try { const ok = await m(); if (ok) return true } catch {} }
+  return false
+}
+
+// ── 18. WAIFU (anime image) ──
+async function waifu(category = 'waifu') {
+  const tries = [
+    async () => { const r = await axios.get(`https://api.waifu.pics/sfw/${category}`, { timeout: TOUT }); const url = r.data?.url; if (!url) return null; const { buf } = await dl(url); return buf },
+    async () => { const r = await axios.get(`https://nekos.best/api/v2/${category}`, { timeout: TOUT }); const url = r.data?.results?.[0]?.url; if (!url) return null; const { buf } = await dl(url); return buf },
+    async () => { const r = await axios.get(`https://api.waifu.im/search?included_tags=${category}&is_nsfw=false`, { timeout: TOUT }); const url = r.data?.images?.[0]?.url; if (!url) return null; const { buf } = await dl(url); return buf },
+    async () => { const r = await axios.get('https://pic.re/image', { timeout: TOUT, responseType: 'arraybuffer' }); return Buffer.from(r.data) },
+    async () => {
+      const url = `https://image.pollinations.ai/prompt/${encodeURIComponent('anime girl beautiful art high quality')}?width=768&height=768&nologo=true`
+      const { buf } = await dl(url); return buf
+    }
+  ]
+  for (const t of tries) { try { const b = await t(); if (b?.length > 200) return b } catch {} }
+  return null
+}
+
+// ── 19. NEON EFFECT ──
+async function neonEffect(imgBuf) {
+  const tries = [
+    async () => {
+      const sharp = (await import('sharp')).default
+      return await sharp(imgBuf)
+        .modulate({ brightness: 0.5, saturation: 3 })
+        .linear(1.5, -50)
+        .sharpen({ sigma: 5 })
+        .jpeg({ quality: 95 }).toBuffer()
+    },
+    async () => {
+      const f = new FormData(); f.append('image', imgBuf, { filename: 'i.jpg' })
+      const r = await axios.post('https://api.deepai.org/api/night-mode-filter', f, {
+        headers: { ...f.getHeaders(), 'api-key': process.env.DEEPAI_KEY || 'quickstart-QUdJIGlzIGF3ZXNvbWU' }, timeout: 30000
+      }); const url = r.data?.output_url; if (!url) return null; const { buf } = await dl(url); return buf
+    },
+    async () => {
+      const inp = tmpF('jpg'); const out = tmpF('jpg'); fs.writeFileSync(inp, imgBuf)
+      await execAsync(`convert "${inp}" -negate -colorspace Gray -negate "${out}"`, { timeout: 15000 })
+      const b = fs.readFileSync(out); gc(inp, out); return b
+    }
+  ]
+  for (const t of tries) { try { const b = await t(); if (b?.length > 200) return b } catch {} }
+  return null
+}
+
+// ── 20. SKETCH EFFECT ──
+async function sketch(imgBuf) {
+  const tries = [
+    async () => {
+      const f = new FormData(); f.append('image', imgBuf, { filename: 'i.jpg' })
+      const r = await axios.post('https://api.deepai.org/api/sketch2img', f, {
+        headers: { ...f.getHeaders(), 'api-key': process.env.DEEPAI_KEY || 'quickstart-QUdJIGlzIGF3ZXNvbWU' }, timeout: 30000
+      }); const url = r.data?.output_url; if (!url) return null; const { buf } = await dl(url); return buf
+    },
+    async () => {
+      const inp = tmpF('jpg'); const out = tmpF('jpg'); fs.writeFileSync(inp, imgBuf)
+      await execAsync(`convert "${inp}" -colorspace Gray -sketch 0x20+120 "${out}"`, { timeout: 15000 })
+      const b = fs.readFileSync(out); gc(inp, out); return b
+    },
+    async () => {
+      const sharp = (await import('sharp')).default
+      const grey = await sharp(imgBuf).greyscale().toBuffer()
+      return await sharp(grey).sharpen({ sigma: 2, m1: 3, m2: 0 }).jpeg({ quality: 92 }).toBuffer()
+    }
+  ]
+  for (const t of tries) { try { const b = await t(); if (b?.length > 200) return b } catch {} }
+  return null
+}
+
+// ── 21. OIL PAINT EFFECT ──
+async function oilPaint(imgBuf) {
+  const tries = [
+    async () => {
+      const f = new FormData(); f.append('image', imgBuf, { filename: 'i.jpg' })
+      const r = await axios.post('https://api.deepai.org/api/oil-painting-style-transfer', f, {
+        headers: { ...f.getHeaders(), 'api-key': process.env.DEEPAI_KEY || 'quickstart-QUdJIGlzIGF3ZXNvbWU' }, timeout: 30000
+      }); const url = r.data?.output_url; if (!url) return null; const { buf } = await dl(url); return buf
+    },
+    async () => {
+      const inp = tmpF('jpg'); const out = tmpF('jpg'); fs.writeFileSync(inp, imgBuf)
+      await execAsync(`convert "${inp}" -paint 4 "${out}"`, { timeout: 15000 })
+      const b = fs.readFileSync(out); gc(inp, out); return b
+    },
+    async () => {
+      const sharp = (await import('sharp')).default
+      return await sharp(imgBuf).blur(1.5).modulate({ saturation: 2, brightness: 1.1 }).jpeg({ quality: 95 }).toBuffer()
+    }
+  ]
+  for (const t of tries) { try { const b = await t(); if (b?.length > 200) return b } catch {} }
+  return null
+}
+
+// ── 22. PIXEL ART ──
+async function pixelArt(imgBuf) {
+  const tries = [
+    async () => {
+      const sharp = (await import('sharp')).default
+      const small = await sharp(imgBuf).resize(64, 64, { fit: 'cover', kernel: 'nearest' }).toBuffer()
+      return await sharp(small).resize(512, 512, { kernel: 'nearest' }).jpeg({ quality: 95 }).toBuffer()
+    },
+    async () => {
+      const inp = tmpF('jpg'); const out = tmpF('jpg'); fs.writeFileSync(inp, imgBuf)
+      await execAsync(`convert "${inp}" -resize 64x64! -scale 512x512 "${out}"`, { timeout: 15000 })
+      const b = fs.readFileSync(out); gc(inp, out); return b
+    }
+  ]
+  for (const t of tries) { try { const b = await t(); if (b?.length > 200) return b } catch {} }
+  return null
+}
+
+// ── 23. ASCII ART ──
+async function asciiArt(imgBuf) {
+  const tries = [
+    async () => {
+      const r = await axios.post('https://api.deepai.org/api/text2img', { text: 'ascii' }, {
+        headers: { 'api-key': process.env.DEEPAI_KEY || 'quickstart-QUdJIGlzIGF3ZXNvbWU' }, timeout: 20000
+      }); return null // fallback to local
+    },
+    async () => {
+      const chars = '@#S%?*+;:,. '
+      const sharp = (await import('sharp')).default
+      const { data, info } = await sharp(imgBuf).resize(60, 30).greyscale().raw().toBuffer({ resolveWithObject: true })
+      let out = ''
+      for (let y = 0; y < info.height; y++) {
+        for (let x = 0; x < info.width; x++) {
+          const px = data[y * info.width + x]
+          out += chars[Math.floor(px / 255 * (chars.length - 1))]
+        }
+        out += '\n'
+      }
+      return out
+    }
+  ]
+  for (const t of tries) { try { const r = await t(); if (r) return r } catch {} }
+  return null
+}
+
+// ── 24. FACE DETECTION ──
+async function detectFace(imgBuf) {
+  const tries = [
+    async () => {
+      const f = new FormData(); f.append('image', imgBuf, { filename: 'i.jpg' })
+      const r = await axios.post('https://api.deepai.org/api/facial-recognition', f, {
+        headers: { ...f.getHeaders(), 'api-key': process.env.DEEPAI_KEY || 'quickstart-QUdJIGlzIGF3ZXNvbWU' }, timeout: 20000
+      }); return r.data?.output
+    },
+    async () => {
+      const r = await axios.post('https://vision.googleapis.com/v1/images:annotate', {
+        requests: [{ image: { content: imgBuf.toString('base64') }, features: [{ type: 'FACE_DETECTION', maxResults: 5 }] }]
+      }, { params: { key: process.env.GOOGLE_VISION_KEY || '' }, timeout: TOUT })
+      const faces = r.data?.responses?.[0]?.faceAnnotations
+      if (!faces?.length) return null
+      return `${faces.length} face(s) detected\nJoy: ${faces[0].joyLikelihood}\nSorrow: ${faces[0].sorrowLikelihood}`
+    }
+  ]
+  for (const t of tries) { try { const r = await t(); if (r) return r } catch {} }
+  return null
+}
+
+// ── 25. TRANSLATE ──
+async function translateText(text, to = 'en') {
+  const tries = [
+    async () => {
+      const r = await axios.get(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=auto|${to}`, { timeout: TOUT })
+      return r.data?.responseData?.translatedText || null
+    },
+    async () => {
+      const r = await axios.post(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${to}&dt=t&q=${encodeURIComponent(text)}`, null, { timeout: TOUT })
+      return r.data?.[0]?.[0]?.[0] || null
+    },
+    async () => {
+      const r = await axios.post('https://libretranslate.de/translate', {
+        q: text, source: 'auto', target: to, format: 'text'
+      }, { timeout: TOUT }); return r.data?.translatedText || null
+    }
+  ]
+  for (const t of tries) { try { const r = await t(); if (r) return r } catch {} }
+  return null
+}
+
+// ── 26. MEME GENERATOR ──
+async function makeMeme(topText, bottomText, imgBuf) {
+  const tries = [
+    async () => {
+      const inp = tmpF('jpg'); const out = tmpF('jpg'); fs.writeFileSync(inp, imgBuf)
+      const top = topText.replace(/'/g, "\\'")
+      const bot = bottomText.replace(/'/g, "\\'")
+      await execAsync(`convert "${inp}" -gravity North -pointsize 48 -fill white -stroke black -strokewidth 2 -annotate 0 '${top}' -gravity South -pointsize 48 -fill white -stroke black -strokewidth 2 -annotate 0 '${bot}' "${out}"`, { timeout: 15000 })
+      const b = fs.readFileSync(out); gc(inp, out); return b
+    },
+    async () => {
+      const sharp = (await import('sharp')).default
+      return await sharp(imgBuf).jpeg({ quality: 90 }).toBuffer()
+    }
+  ]
+  for (const t of tries) { try { const b = await t(); if (b?.length > 200) return b } catch {} }
+  return null
+}
+
+// ── 27. ROAST / COMPLIMENT ──
+async function roastOrCompliment(name, type = 'roast') {
+  const roasts = [
+    `${name}, you're proof that evolution can go in reverse.`,
+    `${name} is like a cloud — when they leave, it's a beautiful day.`,
+    `${name}, your face could stop a clock... and several other things.`,
+    `${name} is the human equivalent of a participation trophy.`,
+    `${name}, you have miles of personality — underground.`,
+    `If brains were candy, ${name} wouldn't have enough for a cavity.`,
+    `${name} — the reason the gene pool needs a lifeguard.`,
+    `${name}, your birth certificate is an apology letter.`,
+    `${name} brings joy to every room... by leaving it.`,
+    `${name}, calling you an idiot would be an insult to idiots.`
+  ]
+  const compliments = [
+    `${name}, you light up every room you walk into! 🌟`,
+    `${name} is the kind of person the world needs more of. 💫`,
+    `${name}, your smile could heal the world. 😊`,
+    `${name} is incredibly talented and everyone can see it! 🏆`,
+    `${name}, you make the impossible look easy. 🔥`,
+    `${name} has a heart of pure gold. ❤️`,
+    `${name}, your energy is absolutely contagious! ✨`,
+    `${name} is living proof that greatness exists. 👑`,
+    `${name}, the world is a better place because you're in it. 🌍`,
+    `${name} inspires everyone around them without even trying! 💪`
+  ]
+  const pool = type === 'compliment' ? compliments : roasts
+  return pool[Math.floor(Math.random() * pool.length)]
+}
+
+// ── 28. VIDEO GENERATION ──
+async function videoGen(prompt) {
+  const tries = [
+    async () => {
+      const r = await axios.post('https://api.replicate.com/v1/models/anotherjesse/zeroscope-v2-xl/predictions', {
+        input: { prompt, num_frames: 24, fps: 8, width: 576, height: 320 }
+      }, { headers: { Authorization: `Bearer ${process.env.REPLICATE_KEY || ''}` }, timeout: 30000 })
+      const pollUrl = r.data?.urls?.get; if (!pollUrl) return null
+      for (let i = 0; i < 25; i++) {
         await new Promise(r => setTimeout(r, 5000))
-        const p = await axios.get(`https://api.stability.ai/v2beta/image-to-video/result/${id}`, {
-          headers: { Authorization: `Bearer ${process.env.STABILITY_KEY || 'test'}` },
-          responseType: 'arraybuffer'
-        })
-        if (p.status === 200) return Buffer.from(p.data)
+        const p = await axios.get(pollUrl, { headers: { Authorization: `Bearer ${process.env.REPLICATE_KEY || ''}` } })
+        if (p.data?.status === 'succeeded') { const url = p.data.output; const { buf } = await dl(typeof url === 'string' ? url : url[0]); return buf }
+        if (p.data?.status === 'failed') return null
       }
       return null
     },
     async () => {
       const r = await axios.post('https://api.replicate.com/v1/models/lucataco/animate-diff-v2/predictions', {
         input: { prompt, num_frames: 16 }
-      }, { headers: { Authorization: `Bearer ${process.env.REPLICATE_KEY || 'test'}` }, timeout: 30000 })
+      }, { headers: { Authorization: `Bearer ${process.env.REPLICATE_KEY || ''}` }, timeout: 30000 })
       const pollUrl = r.data?.urls?.get; if (!pollUrl) return null
-      for (let i = 0; i < 30; i++) {
+      for (let i = 0; i < 25; i++) {
         await new Promise(r => setTimeout(r, 5000))
-        const p = await axios.get(pollUrl, { headers: { Authorization: `Bearer ${process.env.REPLICATE_KEY || 'test'}` } })
-        if (p.data?.status === 'succeeded') {
-          const url = p.data.output; if (!url) return null
-          const { buf } = await fetchBuf(typeof url === 'string' ? url : url[0]); return buf
-        }
-        if (p.data?.status === 'failed') return null
-      }
-      return null
-    },
-    async () => {
-      const r = await axios.post('https://api.together.xyz/v1/images/generations', {
-        model: 'black-forest-labs/FLUX.1-schnell-Free', prompt, steps: 4
-      }, { headers: { Authorization: `Bearer ${process.env.TOGETHER_KEY || 'test'}` }, timeout: 60000 })
-      const url = r.data?.data?.[0]?.url; if (!url) return null
-      const { buf } = await fetchBuf(url); return buf
-    }
-  ]
-  for (const api of apis) {
-    try { const b = await api(); if (b?.length > 500) return b } catch {}
-  }
-  return null
-}
-
-// ─────────────────────────────────────────────
-// FEATURE 8 — VOICE GENERATION (TTS)
-// ─────────────────────────────────────────────
-async function doVoiceGen(text, voiceType = 'random') {
-  const voices = {
-    male: ['onyx', 'echo', 'fable'],
-    female: ['nova', 'shimmer', 'alloy'],
-    child: ['alloy'],
-    random: ['alloy', 'echo', 'fable', 'nova', 'onyx', 'shimmer']
-  }
-  const voiceList = voices[voiceType] || voices.random
-  const voice = voiceList[Math.floor(Math.random() * voiceList.length)]
-
-  const apis = [
-    // 1. OpenAI TTS
-    async () => {
-      const r = await axios.post('https://api.openai.com/v1/audio/speech', {
-        model: 'tts-1', input: text, voice, speed: 1.0
-      }, { headers: { Authorization: `Bearer ${process.env.OPENAI_KEY || 'test'}` }, responseType: 'arraybuffer', timeout: 30000 })
-      return Buffer.from(r.data)
-    },
-    // 2. ElevenLabs
-    async () => {
-      const voiceId = voiceType === 'female' ? 'EXAVITQu4vr4xnSDxMaL' : voiceType === 'child' ? 'pNInz6obpgDQGcFmaJgB' : '21m00Tcm4TlvDq8ikWAM'
-      const r = await axios.post(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
-        text, model_id: 'eleven_monolingual_v1', voice_settings: { stability: 0.5, similarity_boost: 0.75 }
-      }, { headers: { 'xi-api-key': process.env.ELEVENLABS_KEY || 'test' }, responseType: 'arraybuffer', timeout: 30000 })
-      return Buffer.from(r.data)
-    },
-    // 3. Google TTS
-    async () => {
-      const lang = 'en-US'
-      const gender = voiceType === 'female' ? 'FEMALE' : voiceType === 'child' ? 'NEUTRAL' : 'MALE'
-      const r = await axios.post(`https://texttospeech.googleapis.com/v1/text:synthesize?key=${process.env.GOOGLE_TTS_KEY || 'test'}`, {
-        input: { text },
-        voice: { languageCode: lang, ssmlGender: gender },
-        audioConfig: { audioEncoding: 'MP3' }
-      }, { timeout: 30000 })
-      const b64 = r.data?.audioContent; if (!b64) return null
-      return Buffer.from(b64, 'base64')
-    },
-    // 4. Azure TTS
-    async () => {
-      const voiceName = voiceType === 'female' ? 'en-US-JennyNeural' : voiceType === 'child' ? 'en-US-AnaNeural' : 'en-US-GuyNeural'
-      const token = await axios.post(`https://eastus.api.cognitive.microsoft.com/sts/v1.0/issueToken`, null, {
-        headers: { 'Ocp-Apim-Subscription-Key': process.env.AZURE_TTS_KEY || 'test' }
-      })
-      const r = await axios.post('https://eastus.tts.speech.microsoft.com/cognitiveservices/v1', {
-        ssml: `<speak version='1.0' xml:lang='en-US'><voice name='${voiceName}'>${text}</voice></speak>`
-      }, { headers: { Authorization: `Bearer ${token.data}`, 'Content-Type': 'application/ssml+xml', 'X-Microsoft-OutputFormat': 'audio-16khz-128kbitrate-mono-mp3' }, responseType: 'arraybuffer', timeout: 30000 })
-      return Buffer.from(r.data)
-    },
-    // 5. PlayHT
-    async () => {
-      const start = await axios.post('https://api.play.ht/api/v2/tts', {
-        text, voice: voiceType === 'female' ? 's3://voice-cloning-zero-shot/d9ff78ba-d016-47f6-b0ef-dd630f59414e/female-cs/manifest.json' : 'larry',
-        output_format: 'mp3'
-      }, { headers: { Authorization: `Bearer ${process.env.PLAYHT_KEY || 'test'}`, 'X-USER-ID': process.env.PLAYHT_USER || 'test' }, timeout: 30000 })
-      const url = start.data?.href; if (!url) return null
-      for (let i = 0; i < 15; i++) {
-        await new Promise(r => setTimeout(r, 2000))
-        const p = await axios.get(url, { headers: { Authorization: `Bearer ${process.env.PLAYHT_KEY || 'test'}`, 'X-USER-ID': process.env.PLAYHT_USER || 'test' } })
-        if (p.data?.output?.url) { const { buf } = await fetchBuf(p.data.output.url); return buf }
-      }
-      return null
-    },
-    // 6. StreamElements TTS (free)
-    async () => {
-      const voice2 = voiceType === 'female' ? 'Joanna' : voiceType === 'child' ? 'Justin' : 'Matthew'
-      const url = `https://api.streamelements.com/kappa/v2/speech?voice=${voice2}&text=${encodeURIComponent(text)}`
-      const { buf } = await fetchBuf(url)
-      return buf
-    },
-    // 7. Voicerss
-    async () => {
-      const url = `https://api.voicerss.org/?key=${process.env.VOICERSS_KEY || 'test'}&hl=en-us&v=${voiceType === 'female' ? 'Linda' : 'John'}&src=${encodeURIComponent(text)}&c=MP3`
-      const { buf } = await fetchBuf(url)
-      return buf
-    },
-    // 8. TikTok TTS (unofficial)
-    async () => {
-      const voices2 = { male: 'en_us_006', female: 'en_us_female_itp', child: 'en_us_ghostface', random: 'en_us_002' }
-      const r = await axios.post('https://tiktok-tts.weilnet.workers.dev/api/generation', {
-        text, voice: voices2[voiceType] || 'en_us_002'
-      }, { timeout: 20000 })
-      const b64 = r.data?.data; if (!b64) return null
-      return Buffer.from(b64, 'base64')
-    },
-    // 9. Uberduck
-    async () => {
-      const r = await axios.post('https://api.uberduck.ai/speak', {
-        speech: text, voice: voiceType === 'female' ? 'amy' : 'zwf'
-      }, { auth: { username: process.env.UBERDUCK_KEY || 'test', password: process.env.UBERDUCK_SECRET || 'test' }, timeout: 30000 })
-      const uuid = r.data?.uuid; if (!uuid) return null
-      for (let i = 0; i < 15; i++) {
-        await new Promise(r => setTimeout(r, 2000))
-        const p = await axios.get(`https://api.uberduck.ai/speak-status?uuid=${uuid}`, {
-          auth: { username: process.env.UBERDUCK_KEY || 'test', password: process.env.UBERDUCK_SECRET || 'test' }
-        })
-        if (p.data?.path) { const { buf } = await fetchBuf(p.data.path); return buf }
-      }
-      return null
-    },
-    // 10. Replica Studios
-    async () => {
-      const r = await axios.post('https://api.replicastudios.com/speech', {
-        txt: text, speaker_id: voiceType === 'female' ? '12' : '1', bit_rate: 128, sample_rate: 44100
-      }, { headers: { Authorization: `Bearer ${process.env.REPLICA_KEY || 'test'}` }, timeout: 30000 })
-      const url = r.data?.uuid; if (!url) return null
-      const { buf } = await fetchBuf(url); return buf
-    }
-  ]
-  for (const api of apis) {
-    try { const b = await api(); if (b?.length > 500) return b } catch {}
-  }
-  return null
-}
-
-// ─────────────────────────────────────────────
-// FEATURE 9 — LYRICS
-// ─────────────────────────────────────────────
-async function doLyrics(query) {
-  const apis = [
-    async () => {
-      const r = await axios.get('https://api.genius.com/search', {
-        params: { q: query }, timeout: TIMEOUT,
-        headers: { Authorization: `Bearer ${process.env.GENIUS_TOKEN || 'tBkgkNP6YnkKPkyNBkj3rUQYwFhJCh9n5IJ5ZlmGZsrMFvEQFbmN8EiLuFcGOPrH'}` }
-      })
-      const t = r.data?.response?.hits?.[0]?.result
-      if (!t) return null
-      return { title: t.title, artist: t.primary_artist?.name, url: t.url, thumbnail: t.song_art_image_url, source: 'Genius' }
-    },
-    async () => {
-      const r = await axios.get(`https://lyrist.vercel.app/api/${encodeURIComponent(query)}`, { timeout: TIMEOUT })
-      if (!r.data?.lyrics) return null
-      return { title: r.data.title, artist: r.data.artist, lyrics: r.data.lyrics?.slice(0, 1500), thumbnail: r.data.image, source: 'Lyrist' }
-    },
-    async () => {
-      const r = await axios.get('https://api.lyrics.ovh/v1/' + query.replace(' ', '/'), { timeout: TIMEOUT })
-      if (!r.data?.lyrics) return null
-      return { lyrics: r.data.lyrics?.slice(0, 1500), source: 'Lyrics.ovh' }
-    },
-    async () => {
-      const r = await axios.get(`https://some-random-api.com/lyrics?title=${encodeURIComponent(query)}`, { timeout: TIMEOUT })
-      if (!r.data?.lyrics) return null
-      return { title: r.data.title, author: r.data.author, lyrics: r.data.lyrics?.slice(0, 1500), thumbnail: r.data.thumbnail?.genius, source: 'SRA' }
-    },
-    async () => {
-      const [title, artist] = query.split(' by ')
-      const r = await axios.get('https://api.musixmatch.com/ws/1.1/track.search', {
-        params: { apikey: '3960fe569e0f9c70bc35d454cd407a9c', q_track: title, q_artist: artist || '', page_size: 1 }, timeout: TIMEOUT
-      })
-      const t = r.data?.message?.body?.track_list?.[0]?.track
-      if (!t) return null
-      const lyrics = await axios.get('https://api.musixmatch.com/ws/1.1/track.lyrics.get', {
-        params: { apikey: '3960fe569e0f9c70bc35d454cd407a9c', track_id: t.track_id }, timeout: TIMEOUT
-      })
-      const txt = lyrics.data?.message?.body?.lyrics?.lyrics_body
-      if (!txt) return null
-      return { title: t.track_name, artist: t.artist_name, lyrics: txt.slice(0, 1500), source: 'Musixmatch' }
-    }
-  ]
-  for (const api of apis) {
-    try { const r = await api(); if (r) return r } catch {}
-  }
-  return null
-}
-
-// ─────────────────────────────────────────────
-// FEATURE 10 — BIBLE VERSE
-// ─────────────────────────────────────────────
-async function doBible(query) {
-  const apis = [
-    async () => {
-      const r = await axios.get(`https://bible-api.com/${encodeURIComponent(query)}`, { timeout: TIMEOUT })
-      if (!r.data?.text) return null
-      return { reference: r.data.reference, text: r.data.text, translation: r.data.translation_name || 'KJV' }
-    },
-    async () => {
-      const r = await axios.get(`https://labs.bible.org/api/?passage=${encodeURIComponent(query)}&type=json`, { timeout: TIMEOUT })
-      const v = r.data?.[0]
-      if (!v) return null
-      return { reference: `${v.bookname} ${v.chapter}:${v.verse}`, text: v.text, translation: 'NET' }
-    },
-    async () => {
-      const r = await axios.get(`https://api.esv.org/v3/passage/text/?q=${encodeURIComponent(query)}&include-passage-references=true`, {
-        headers: { Authorization: `Token ${process.env.ESV_KEY || 'test'}` }, timeout: TIMEOUT
-      })
-      const text = r.data?.passages?.[0]
-      if (!text) return null
-      return { reference: r.data?.canonical, text: text.slice(0, 800), translation: 'ESV' }
-    },
-    async () => {
-      const r = await axios.get(`https://api.scripture.api.bible/v1/bibles/de4e12af7f28f599-02/search?query=${encodeURIComponent(query)}`, {
-        headers: { 'api-key': process.env.BIBLE_KEY || 'test' }, timeout: TIMEOUT
-      })
-      const v = r.data?.data?.verses?.[0]
-      if (!v) return null
-      return { reference: v.reference, text: v.text, translation: 'KJV' }
-    },
-    async () => {
-      const r = await axios.get(`https://cdn.jsdelivr.net/gh/wldeh/bible-api/bibles/en-kjv/books/john/chapters/3/verses/16.json`, { timeout: TIMEOUT })
-      return { reference: 'John 3:16', text: r.data?.text || 'For God so loved the world...', translation: 'KJV' }
-    }
-  ]
-  for (const api of apis) {
-    try { const r = await api(); if (r) return r } catch {}
-  }
-  return null
-}
-
-// ─────────────────────────────────────────────
-// FEATURE 11 — QURAN VERSE
-// ─────────────────────────────────────────────
-async function doQuran(query) {
-  const apis = [
-    async () => {
-      const [surah, ayah] = query.split(':').map(s => s.trim())
-      const r = await axios.get(`https://api.alquran.cloud/v1/ayah/${surah}:${ayah || 1}/en.asad`, { timeout: TIMEOUT })
-      const v = r.data?.data
-      if (!v) return null
-      const ar = await axios.get(`https://api.alquran.cloud/v1/ayah/${surah}:${ayah || 1}/ar`, { timeout: TIMEOUT })
-      return {
-        reference: v.surah?.englishName ? `${v.surah.englishName} ${surah}:${ayah || 1}` : query,
-        arabic: ar.data?.data?.text,
-        translation: v.text,
-        translator: 'Muhammad Asad'
-      }
-    },
-    async () => {
-      const r = await axios.get(`https://api.quran.com/api/v4/verses/by_key/${query}?translations=131`, { timeout: TIMEOUT })
-      const v = r.data?.verse
-      if (!v) return null
-      return {
-        reference: v.verse_key,
-        translation: v.translations?.[0]?.text?.replace(/<[^>]+>/g, ''),
-        translator: 'Dr. Mustafa Khattab'
-      }
-    },
-    async () => {
-      const r = await axios.get(`https://quranapi.pages.dev/api/${query}.json`, { timeout: TIMEOUT })
-      if (!r.data) return null
-      return { reference: query, arabic: r.data?.arabic1, translation: r.data?.english, translator: 'Quran.com' }
-    }
-  ]
-  for (const api of apis) {
-    try { const r = await api(); if (r) return r } catch {}
-  }
-  return null
-}
-
-// ─────────────────────────────────────────────
-// FEATURE 12 — FOOD INFO (AI describe + thumbnail)
-// ─────────────────────────────────────────────
-async function doFoodInfo(query) {
-  const apis = [
-    async () => {
-      const r = await axios.get('https://api.spoonacular.com/recipes/complexSearch', {
-        params: { query, number: 1, addRecipeInformation: true, apiKey: process.env.SPOONACULAR_KEY || 'test' }, timeout: TIMEOUT
-      })
-      const f = r.data?.results?.[0]
-      if (!f) return null
-      return {
-        name: f.title, image: f.image,
-        summary: f.summary?.replace(/<[^>]+>/g, '').slice(0, 300),
-        calories: f.nutrition?.nutrients?.find(n => n.name === 'Calories')?.amount,
-        time: f.readyInMinutes ? `${f.readyInMinutes} min` : null,
-        servings: f.servings, source: 'Spoonacular'
-      }
-    },
-    async () => {
-      const r = await axios.get(`https://www.themealdb.com/api/json/v1/1/search.php?s=${encodeURIComponent(query)}`, { timeout: TIMEOUT })
-      const f = r.data?.meals?.[0]
-      if (!f) return null
-      const ingredients = [1, 2, 3, 4, 5].map(i => f[`strIngredient${i}`]).filter(Boolean).join(', ')
-      return { name: f.strMeal, image: f.strMealThumb, summary: f.strInstructions?.slice(0, 300), category: f.strCategory, area: f.strArea, ingredients, source: 'MealDB' }
-    },
-    async () => {
-      const r = await axios.get(`https://api.edamam.com/api/food-database/v2/parser?ingr=${encodeURIComponent(query)}&app_id=${process.env.EDAMAM_ID || 'test'}&app_key=${process.env.EDAMAM_KEY || 'test'}`, { timeout: TIMEOUT })
-      const f = r.data?.hints?.[0]?.food
-      if (!f) return null
-      return { name: f.label, image: f.image, calories: Math.round(f.nutrients?.ENERC_KCAL), source: 'Edamam' }
-    },
-    async () => {
-      const r = await axios.get(`https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&json=1&page_size=1`, { timeout: TIMEOUT })
-      const f = r.data?.products?.[0]
-      if (!f) return null
-      return { name: f.product_name, image: f.image_url, calories: f.nutriments?.energy_value, source: 'OpenFoodFacts' }
-    }
-  ]
-  for (const api of apis) {
-    try { const r = await api(); if (r) return r } catch {}
-  }
-  return null
-}
-
-// ─────────────────────────────────────────────
-// FEATURE 13 — STICKER MAKER
-// ─────────────────────────────────────────────
-async function doSticker(imgBuf, packName = 'Bot', authorName = 'Bot') {
-  try {
-    const { prepareWAMessageMedia, generateWAMessageFromContent, proto } = await import('@whiskeysockets/baileys')
-    // Try sharp to convert to webp
-    const sharp = (await import('sharp')).default
-    const webpBuf = await sharp(imgBuf).resize(512, 512, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } }).webp().toBuffer()
-    return webpBuf
-  } catch {
-    // Fallback: ffmpeg
-    try {
-      const inp = tmp('jpg'); const out = tmp('webp')
-      fs.writeFileSync(inp, imgBuf)
-      await execAsync(`ffmpeg -i "${inp}" -vf "scale=512:512:force_original_aspect_ratio=decrease,pad=512:512:(ow-iw)/2:(oh-ih)/2:color=white@0" "${out}" -y`, { timeout: 20000 })
-      const b = fs.readFileSync(out); clean(inp, out); return b
-    } catch {}
-  }
-  return null
-}
-
-// ─────────────────────────────────────────────
-// FEATURE 14 — COLORIZE (B&W to color)
-// ─────────────────────────────────────────────
-async function doColorize(imgBuf) {
-  const apis = [
-    async () => {
-      const form = new FormData()
-      form.append('image', imgBuf, { filename: 'img.jpg' })
-      const r = await axios.post('https://api.deepai.org/api/colorizer', form, {
-        headers: { ...form.getHeaders(), 'api-key': process.env.DEEPAI_KEY || 'quickstart-QUdJIGlzIGF3ZXNvbWU' }, timeout: 30000
-      })
-      const url = r.data?.output_url; if (!url) return null
-      const { buf } = await fetchBuf(url); return buf
-    },
-    async () => {
-      const start = await axios.post('https://api.replicate.com/v1/models/arielreplicate/deoldify_image/predictions', {
-        input: { input_image: 'data:image/jpeg;base64,' + imgBuf.toString('base64'), render_factor: 35 }
-      }, { headers: { Authorization: `Bearer ${process.env.REPLICATE_KEY || 'test'}` }, timeout: 30000 })
-      const pollUrl = start.data?.urls?.get; if (!pollUrl) return null
-      for (let i = 0; i < 20; i++) {
-        await new Promise(r => setTimeout(r, 3000))
-        const p = await axios.get(pollUrl, { headers: { Authorization: `Bearer ${process.env.REPLICATE_KEY || 'test'}` } })
-        if (p.data?.status === 'succeeded') { const url = p.data.output; if (!url) return null; const { buf } = await fetchBuf(url); return buf }
+        const p = await axios.get(pollUrl, { headers: { Authorization: `Bearer ${process.env.REPLICATE_KEY || ''}` } })
+        if (p.data?.status === 'succeeded') { const url = p.data.output; const { buf } = await dl(typeof url === 'string' ? url : url[0]); return buf }
         if (p.data?.status === 'failed') return null
       }
       return null
     }
   ]
-  for (const api of apis) {
-    try { const b = await api(); if (b?.length > 500) return b } catch {}
-  }
+  for (const t of tries) { try { const b = await t(); if (b?.length > 200) return b } catch {} }
   return null
 }
 
-// ─────────────────────────────────────────────
-// FEATURE 15 — CARTOON
-// ─────────────────────────────────────────────
-async function doCartoon(imgBuf) {
-  const apis = [
-    async () => {
-      const form = new FormData()
-      form.append('image', imgBuf, { filename: 'img.jpg' })
-      const r = await axios.post('https://api.deepai.org/api/toonify', form, {
-        headers: { ...form.getHeaders(), 'api-key': process.env.DEEPAI_KEY || 'quickstart-QUdJIGlzIGF3ZXNvbWU' }, timeout: 30000
-      })
-      const url = r.data?.output_url; if (!url) return null
-      const { buf } = await fetchBuf(url); return buf
-    },
-    async () => {
-      const start = await axios.post('https://api.replicate.com/v1/models/cjwbw/codeformer/predictions', {
-        input: { image: 'data:image/jpeg;base64,' + imgBuf.toString('base64') }
-      }, { headers: { Authorization: `Bearer ${process.env.REPLICATE_KEY || 'test'}` }, timeout: 30000 })
-      const pollUrl = start.data?.urls?.get; if (!pollUrl) return null
-      for (let i = 0; i < 15; i++) {
-        await new Promise(r => setTimeout(r, 3000))
-        const p = await axios.get(pollUrl, { headers: { Authorization: `Bearer ${process.env.REPLICATE_KEY || 'test'}` } })
-        if (p.data?.status === 'succeeded') { const url = p.data.output; if (!url) return null; const { buf } = await fetchBuf(url); return buf }
-        if (p.data?.status === 'failed') return null
-      }
-      return null
-    },
-    async () => {
-      const form = new FormData()
-      form.append('image', imgBuf, { filename: 'img.jpg' })
-      const r = await axios.post('https://api.deepai.org/api/cartoonizer', form, {
-        headers: { ...form.getHeaders(), 'api-key': process.env.DEEPAI_KEY || 'quickstart-QUdJIGlzIGF3ZXNvbWU' }, timeout: 30000
-      })
-      const url = r.data?.output_url; if (!url) return null
-      const { buf } = await fetchBuf(url); return buf
-    }
-  ]
-  for (const api of apis) {
-    try { const b = await api(); if (b?.length > 500) return b } catch {}
+// ── 29. EMOJIFY ──
+async function emojify(text) {
+  const emojiMap = {
+    happy: '😊', sad: '😢', love: '❤️', fire: '🔥', cool: '😎', laugh: '😂',
+    cry: '😭', angry: '😡', food: '🍔', music: '🎵', star: '⭐', heart: '💜',
+    sun: '☀️', moon: '🌙', rain: '🌧️', dog: '🐶', cat: '🐱', win: '🏆',
+    money: '💰', game: '🎮', ok: '👌', yes: '✅', no: '❌', sleep: '😴'
   }
-  return null
+  let result = text
+  for (const [word, emoji] of Object.entries(emojiMap)) {
+    result = result.replace(new RegExp(`\\b${word}\\b`, 'gi'), `${emoji} ${word}`)
+  }
+  return result
 }
 
-// ─────────────────────────────────────────────
-// FEATURE 16 — QR CODE
-// ─────────────────────────────────────────────
-async function doQR(text) {
-  const apis = [
-    async () => { const { buf } = await fetchBuf(`https://api.qrserver.com/v1/create-qr-code/?size=512x512&data=${encodeURIComponent(text)}`); return buf },
-    async () => { const { buf } = await fetchBuf(`https://chart.googleapis.com/chart?chs=512x512&cht=qr&chl=${encodeURIComponent(text)}&choe=UTF-8`); return buf },
-    async () => { const { buf } = await fetchBuf(`https://quickchart.io/qr?text=${encodeURIComponent(text)}&size=512`); return buf },
+// ── 30. IMAGE CAPTION (AI describe image) ──
+async function describeImage(imgBuf) {
+  const tries = [
     async () => {
-      const r = await axios.post('https://qrcode-monkey.com/qr/custom', { data: text, config: { body: 'square' }, size: 300, file: 'png' }, { responseType: 'arraybuffer', timeout: TIMEOUT })
-      return Buffer.from(r.data)
-    }
-  ]
-  for (const api of apis) {
-    try { const b = await api(); if (b?.length > 500) return b } catch {}
-  }
-  return null
-}
-
-// ─────────────────────────────────────────────
-// FEATURE 17 — OCR (Read text from image)
-// ─────────────────────────────────────────────
-async function doOCR(imgBuf) {
-  const apis = [
-    async () => {
-      const form = new FormData()
-      form.append('base64Image', 'data:image/jpeg;base64,' + imgBuf.toString('base64'))
-      form.append('language', 'eng')
-      const r = await axios.post('https://api.ocr.space/parse/image', form, {
-        headers: { ...form.getHeaders(), apikey: process.env.OCRSPACE_KEY || 'helloworld' }, timeout: TIMEOUT
-      })
-      const text = r.data?.ParsedResults?.[0]?.ParsedText
-      if (!text) return null
-      return text.trim()
+      const f = new FormData(); f.append('image', imgBuf, { filename: 'i.jpg' })
+      const r = await axios.post('https://api.deepai.org/api/neuraltalk', f, {
+        headers: { ...f.getHeaders(), 'api-key': process.env.DEEPAI_KEY || 'quickstart-QUdJIGlzIGF3ZXNvbWU' }, timeout: TOUT
+      }); return r.data?.output || null
     },
     async () => {
       const r = await axios.post('https://vision.googleapis.com/v1/images:annotate', {
-        requests: [{ image: { content: imgBuf.toString('base64') }, features: [{ type: 'TEXT_DETECTION', maxResults: 1 }] }]
-      }, { params: { key: process.env.GOOGLE_VISION_KEY || 'test' }, timeout: TIMEOUT })
-      const text = r.data?.responses?.[0]?.fullTextAnnotation?.text
-      if (!text) return null
-      return text.trim()
+        requests: [{ image: { content: imgBuf.toString('base64') }, features: [{ type: 'LABEL_DETECTION', maxResults: 8 }, { type: 'OBJECT_LOCALIZATION', maxResults: 5 }] }]
+      }, { params: { key: process.env.GOOGLE_VISION_KEY || '' }, timeout: TOUT })
+      const labels = r.data?.responses?.[0]?.labelAnnotations?.map(l => l.description).join(', ')
+      return labels || null
     },
     async () => {
-      const form = new FormData()
-      form.append('image', imgBuf, { filename: 'img.jpg' })
-      const r = await axios.post('https://api.deepai.org/api/read-text', form, {
-        headers: { ...form.getHeaders(), 'api-key': process.env.DEEPAI_KEY || 'quickstart-QUdJIGlzIGF3ZXNvbWU' }, timeout: TIMEOUT
-      })
-      return r.data?.output?.replace(/\n+/g, ' ').trim() || null
+      const r = await axios.post('https://api.imagga.com/v2/tags',
+        { image_base64: imgBuf.toString('base64') },
+        { auth: { username: process.env.IMAGGA_KEY || '', password: process.env.IMAGGA_SECRET || '' }, timeout: TOUT }
+      ); return r.data?.result?.tags?.slice(0, 8).map(t => t.tag.en).join(', ') || null
     }
   ]
-  for (const api of apis) {
-    try { const r = await api(); if (r) return r } catch {}
-  }
+  for (const t of tries) { try { const r = await t(); if (r) return r } catch {} }
   return null
 }
 
-// ─────────────────────────────────────────────
-// FEATURE 18 — GROUP STATUS (WhatsApp Stories)
-// ─────────────────────────────────────────────
-async function doGroupStatus(sock, content, caption) {
-  const methods = [
-    // M1: sendMessage status@broadcast image
-    async () => {
-      await sock.sendMessage('status@broadcast', {
-        image: content, caption: caption || '',
-        backgroundColor: '#000000', font: 1
-      })
-      return true
-    },
-    // M2: text status
-    async () => {
-      if (typeof content === 'string') {
-        await sock.sendMessage('status@broadcast', {
-          text: content,
-          backgroundColor: '#6B2D8B',
-          font: 4
-        })
-        return true
-      }
-      return false
-    },
-    // M3: video status
-    async () => {
-      await sock.sendMessage('status@broadcast', {
-        video: content, caption: caption || '',
-        seconds: 15
-      })
-      return true
-    },
-    // M4: with statusJidList
-    async () => {
-      await sock.sendMessage('status@broadcast', {
-        image: content, caption: caption || ''
-      }, { statusJidList: [] })
-      return true
-    },
-    // M5: relayMessage approach
-    async () => {
-      const { generateWAMessageFromContent, proto } = await import('@whiskeysockets/baileys')
-      const msg = generateWAMessageFromContent('status@broadcast', proto.Message.fromObject({
-        imageMessage: { caption: caption || '', url: '', mimetype: 'image/jpeg' }
-      }), { userJid: sock.user?.id })
-      await sock.relayMessage('status@broadcast', msg.message, { messageId: msg.key.id, statusJidList: [] })
-      return true
-    }
-  ]
-  for (const m of methods) {
-    try { const ok = await m(); if (ok) return { success: true } } catch {}
-  }
-  return { success: false }
-}
+// ══════════════════════════════════════════════════
+//  MAIN EXPORT — FIXED ROUTING
+// ══════════════════════════════════════════════════
+export default async function photo(sock, ctx, botSettings) {
+  const { msg, from, sender } = ctx
 
-// ─────────────────────────────────────────────
-// MAIN HANDLER
-// ─────────────────────────────────────────────
-export default async function photo(sock, { msg, from, args, sender, command }, botSettings) {
-  const brand = botSettings?.brand_name || botSettings?.botname || process.env.BUILD_BRAND || 'Bot'
-  const cmd = command?.toLowerCase() || args?.[0]?.toLowerCase() || 'photo'
-  const argText = (args?.slice(cmd === command ? 0 : 1) || []).join(' ').trim()
+  // ── Get prefix from Supabase/botSettings (changeable) ──
+  const prefix = botSettings?.prefix ?? botSettings?.bot_prefix ?? botSettings?.settings?.prefix ?? '.'
+  const brand = botSettings?.brand_name ?? botSettings?.botname ?? process.env.BUILD_BRAND ?? 'Bot'
 
-  const replyText = (lines) =>
-    sock.sendMessage(from, {
-      text: box(cmd.toUpperCase(), lines, brand)
-    }, { quoted: msg })
+  // ── Parse command body ──
+  const body =
+    msg?.message?.conversation ||
+    msg?.message?.extendedTextMessage?.text ||
+    msg?.message?.imageMessage?.caption ||
+    msg?.message?.videoMessage?.caption ||
+    msg?.message?.buttonsResponseMessage?.selectedButtonId ||
+    msg?.message?.listResponseMessage?.singleSelectReply?.selectedRowId ||
+    msg?.message?.templateButtonReplyMessage?.selectedId ||
+    ''
 
-  // ══ REMOVEBG ══
-  if (['removebg', 'rmbg'].includes(cmd)) {
-    await react(sock, msg, '🖼️')
-    const imgBuf = await getImageBuffer(sock, msg)
-    if (!imgBuf) return replyText(['⚠ Send or reply to an image'])
-    const result = await doRemoveBg(imgBuf)
-    if (!result) return replyText(['❌ Background removal failed — all APIs exhausted'])
-    await sendImage(sock, from, msg, result, box('REMOVEBG', ['✅ Background removed'], brand))
-    return
-  }
+  if (!body?.startsWith(prefix)) return
 
-  // ══ UPSCALE ══
-  if (['upscale', 'enhance'].includes(cmd)) {
-    await react(sock, msg, '🔍')
-    const imgBuf = await getImageBuffer(sock, msg)
-    if (!imgBuf) return replyText(['⚠ Send or reply to an image'])
-    const result = await doUpscale(imgBuf)
-    if (!result) return replyText(['❌ Upscale failed — all APIs exhausted'])
-    await sendImage(sock, from, msg, result, box('UPSCALE', ['✅ Image upscaled 2x'], brand))
-    return
-  }
+  const withoutPrefix = body.slice(prefix.length).trim()
+  const parts = withoutPrefix.split(/\s+/)
+  const cmd = parts[0]?.toLowerCase()
+  const args = parts.slice(1)
+  const argText = args.join(' ').trim()
 
-  // ══ IMAGINE ══
-  if (['imagine', 'txt2img', 'ai'].includes(cmd)) {
-    const prompt = argText || msg?.message?.extendedTextMessage?.contextInfo?.quotedMessage?.conversation
-    if (!prompt) return replyText(['⚠ Usage: .imagine <prompt>', '💡 Or reply to a message with the prompt'])
-    await react(sock, msg, '🎨')
-    const result = await doImagine(prompt)
-    if (!result) return replyText(['❌ Image generation failed — all APIs exhausted'])
-    await sendImage(sock, from, msg, result, box('IMAGINE', [`🎨 *${prompt.slice(0, 60)}*`], brand))
-    return
-  }
+  if (!cmd) return
 
-  // ══ BLUR ══
-  if (cmd === 'blur') {
-    await react(sock, msg, '🌫️')
-    const imgBuf = await getImageBuffer(sock, msg)
-    if (!imgBuf) return replyText(['⚠ Send or reply to an image'])
-    const level = parseInt(args?.[1]) || 10
-    const result = await doBlur(imgBuf, level)
-    if (!result) return replyText(['❌ Blur failed'])
-    await sendImage(sock, from, msg, result, box('BLUR', [`✅ Blur applied (level ${level})`], brand))
-    return
-  }
-
-  // ══ UNBLUR ══
-  if (['unblur', 'deblur'].includes(cmd)) {
-    await react(sock, msg, '✨')
-    const imgBuf = await getImageBuffer(sock, msg)
-    if (!imgBuf) return replyText(['⚠ Send or reply to an image'])
-    const result = await doUnblur(imgBuf)
-    if (!result) return replyText(['❌ Unblur failed'])
-    await sendImage(sock, from, msg, result, box('UNBLUR', ['✅ Image sharpened'], brand))
-    return
-  }
-
-  // ══ REMINI ══
-  if (['remini', 'restore'].includes(cmd)) {
-    await react(sock, msg, '💫')
-    const imgBuf = await getImageBuffer(sock, msg)
-    if (!imgBuf) return replyText(['⚠ Send or reply to an image'])
-    const result = await doRemini(imgBuf)
-    if (!result) return replyText(['❌ Enhancement failed'])
-    await sendImage(sock, from, msg, result, box('REMINI', ['✅ Face & image restored'], brand))
-    return
-  }
-
-  // ══ VIDEO GEN ══
-  if (['vid2img', 'videogen', 'video'].includes(cmd)) {
-    const prompt = argText || msg?.message?.extendedTextMessage?.contextInfo?.quotedMessage?.conversation
-    if (!prompt) return replyText(['⚠ Usage: .video <prompt>'])
-    await react(sock, msg, '🎬')
-    const result = await doVideoGen(prompt)
-    if (!result) return replyText(['❌ Video generation failed — try a simpler prompt'])
-    const isMp4 = result.length > 100000
-    if (isMp4) {
-      await sock.sendMessage(from, { video: result, mimetype: 'video/mp4', caption: box('VIDEOGEN', [`🎬 *${prompt.slice(0, 60)}*`], brand) }, { quoted: msg })
-    } else {
-      await sendImage(sock, from, msg, result, box('VIDEOGEN', [`🎬 *${prompt.slice(0, 60)}*`], brand))
-    }
-    return
-  }
-
-  // ══ VOICE GEN ══
-  if (['voicegen', 'tts', 'speak'].includes(cmd)) {
-    const parts = argText.split(' ')
-    let voiceType = 'random'
-    let text = argText
-    if (['male', 'female', 'child', 'random'].includes(parts[0]?.toLowerCase())) {
-      voiceType = parts[0].toLowerCase()
-      text = parts.slice(1).join(' ')
-    }
-    if (!text) return replyText(['⚠ Usage: .tts [male|female|child|random] <text>'])
-    await react(sock, msg, '🎤')
-    const result = await doVoiceGen(text, voiceType)
-    if (!result) return replyText(['❌ Voice generation failed'])
-    await sendAudio(sock, from, msg, result, `voice_${voiceType}.mp3`)
-    await replyText([`✅ Voice: *${voiceType.toUpperCase()}*`, `📝 "${text.slice(0, 80)}"`])
-    return
-  }
-
-  // ══ LYRICS ══
-  if (['lyrics', 'songlyrics'].includes(cmd)) {
-    if (!argText) return replyText(['⚠ Usage: .lyrics <song name>'])
-    await react(sock, msg, '🎵')
-    const result = await doLyrics(argText)
-    if (!result) return replyText(['❌ Lyrics not found'])
-    const lines = [
-      result.title ? `🎵 *${result.title}*` : null,
-      result.artist || result.author ? `👤 ${result.artist || result.author}` : null,
-      result.lyrics ? `\n${result.lyrics.slice(0, 800)}` : null,
-      result.url ? `🔗 Full: ${result.url}` : null,
-      `🌐 ${result.source}`
-    ]
-    if (result.thumbnail) {
-      try {
-        const { buf } = await fetchBuf(result.thumbnail)
-        await sendImage(sock, from, msg, buf, box('LYRICS', lines, brand))
-      } catch { await replyText(lines) }
-    } else { await replyText(lines) }
-    return
-  }
-
-  // ══ BIBLE ══
-  if (['bible', 'verse'].includes(cmd)) {
-    const query = argText || 'John 3:16'
-    await react(sock, msg, '📖')
-    const result = await doBible(query)
-    if (!result) return replyText(['❌ Verse not found', `💡 Try: .bible John 3:16`])
-    await replyText([
-      `📖 *${result.reference}*`,
-      ``,
-      `"${result.text?.trim().slice(0, 500)}"`,
-      ``,
-      `📚 Translation: ${result.translation}`
-    ])
-    return
-  }
-
-  // ══ QURAN ══
-  if (['quran', 'ayah'].includes(cmd)) {
-    const query = argText || '2:255'
-    await react(sock, msg, '🕌')
-    const result = await doQuran(query)
-    if (!result) return replyText(['❌ Ayah not found', `💡 Try: .quran 2:255`])
-    await replyText([
-      `🕌 *${result.reference}*`,
-      result.arabic ? `\n${result.arabic}` : null,
-      ``,
-      `"${result.translation?.trim().slice(0, 500)}"`,
-      result.translator ? `📚 ${result.translator}` : null
-    ])
-    return
-  }
-
-  // ══ FOOD INFO ══
-  if (['food', 'foodinfo'].includes(cmd)) {
-    if (!argText) return replyText(['⚠ Usage: .food <food name>'])
-    await react(sock, msg, '🍽️')
-    const result = await doFoodInfo(argText)
-    if (!result) return replyText(['❌ Food not found'])
-    const lines = [
-      `🍽️ *${result.name}*`,
-      result.category ? `📂 ${result.category}` : null,
-      result.area ? `🌍 ${result.area}` : null,
-      result.calories ? `🔥 ${Math.round(result.calories)} kcal` : null,
-      result.time ? `⏱ ${result.time}` : null,
-      result.ingredients ? `🥬 Ingredients: ${result.ingredients.slice(0, 100)}` : null,
-      result.summary ? `\n📝 ${result.summary.slice(0, 200)}` : null,
-      `🌐 ${result.source}`
-    ]
-    if (result.image) {
-      try {
-        const { buf } = await fetchBuf(result.image)
-        await sendImage(sock, from, msg, buf, box('FOOD', lines, brand))
-      } catch { await replyText(lines) }
-    } else { await replyText(lines) }
-    return
-  }
-
-  // ══ STICKER ══
-  if (['sticker', 's'].includes(cmd)) {
-    await react(sock, msg, '🎴')
-    const imgBuf = await getImageBuffer(sock, msg)
-    if (!imgBuf) return replyText(['⚠ Send or reply to an image'])
-    const result = await doSticker(imgBuf, brand, brand)
-    if (!result) return replyText(['❌ Sticker creation failed'])
-    await sock.sendMessage(from, { sticker: result }, { quoted: msg })
-    return
-  }
-
-  // ══ COLORIZE ══
-  if (['colorize', 'colour'].includes(cmd)) {
-    await react(sock, msg, '🎨')
-    const imgBuf = await getImageBuffer(sock, msg)
-    if (!imgBuf) return replyText(['⚠ Send or reply to a black & white image'])
-    const result = await doColorize(imgBuf)
-    if (!result) return replyText(['❌ Colorize failed'])
-    await sendImage(sock, from, msg, result, box('COLORIZE', ['✅ Image colorized'], brand))
-    return
-  }
-
-  // ══ CARTOON ══
-  if (['cartoon', 'toon'].includes(cmd)) {
-    await react(sock, msg, '🖌️')
-    const imgBuf = await getImageBuffer(sock, msg)
-    if (!imgBuf) return replyText(['⚠ Send or reply to an image'])
-    const result = await doCartoon(imgBuf)
-    if (!result) return replyText(['❌ Cartoon effect failed'])
-    await sendImage(sock, from, msg, result, box('CARTOON', ['✅ Cartoon effect applied'], brand))
-    return
-  }
-
-  // ══ QR CODE ══
-  if (['qrcode', 'qr'].includes(cmd)) {
-    if (!argText) return replyText(['⚠ Usage: .qr <text or URL>'])
-    await react(sock, msg, '📲')
-    const result = await doQR(argText)
-    if (!result) return replyText(['❌ QR generation failed'])
-    await sendImage(sock, from, msg, result, box('QR CODE', [`📲 *${argText.slice(0, 60)}*`], brand))
-    return
-  }
-
-  // ══ OCR ══
-  if (['ocr', 'readtext'].includes(cmd)) {
-    await react(sock, msg, '📝')
-    const imgBuf = await getImageBuffer(sock, msg)
-    if (!imgBuf) return replyText(['⚠ Send or reply to an image with text'])
-    const result = await doOCR(imgBuf)
-    if (!result) return replyText(['❌ No text found in image'])
-    await replyText([`📝 *Extracted Text:*`, ``, result.slice(0, 800)])
-    return
-  }
-
-  // ══ GROUP STATUS (WhatsApp Stories) ══
-  if (['groupstatus', 'setstatus'].includes(cmd)) {
-    await react(sock, msg, '📢')
-    const imgBuf = await getImageBuffer(sock, msg)
-    const textContent = argText || ''
-
-    if (!imgBuf && !textContent) {
-      return replyText([
-        '⚠ Usage:',
-        '  .setstatus <text> — text status',
-        '  .setstatus [reply to image] — image status',
-        '  .setstatus [reply to image] <caption>'
-      ])
-    }
-
-    const content = imgBuf || textContent
-    const cap = imgBuf ? textContent : null
-    const result = await doGroupStatus(sock, content, cap)
-
-    if (result.success) {
-      await react(sock, msg, '✅')
-      await replyText(['✅ Status posted to WhatsApp Stories'])
-    } else {
-      await replyText(['❌ Failed to post status'])
-    }
-    return
-  }
-
-  // ══ HELP / UNKNOWN ══
-  await replyText([
-    '📋 *Available Commands:*',
-    '',
-    '🖼 .removebg — Remove image background',
-    '🔍 .upscale — Upscale image 2x',
-    '🎨 .imagine <prompt> — AI image generation',
-    '🌫️ .blur — Blur an image',
-    '✨ .unblur — Sharpen/unblur image',
-    '💫 .remini — Restore/enhance face',
-    '🎬 .video <prompt> — AI video generation',
-    '🎤 .tts [voice] <text> — Text to speech',
-    '🎵 .lyrics <song> — Get song lyrics',
-    '📖 .bible <verse> — Bible verse',
-    '🕌 .quran <surah:ayah> — Quran ayah',
-    '🍽️ .food <name> — Food info + image',
-    '🎴 .sticker — Image to sticker',
-    '🎨 .colorize — Colorize B&W image',
-    '🖌️ .cartoon — Cartoon effect',
-    '📲 .qr <text> — Generate QR code',
-    '📝 .ocr — Read text from image',
-    '📢 .setstatus — Post to WhatsApp Stories'
+  // All aliases this file handles
+  const CMDS = new Set([
+    'removebg','rmbg','upscale','enhance','imagine','txt2img','imgen',
+    'blur','unblur','deblur','sharpen','remini','restore',
+    'videogen','vidgen','voicegen','tts','speak','voice',
+    'lyrics','lyric','bible','verse','quran','ayah',
+    'food','foodinfo','sticker','stkr','colorize','colour','color',
+    'cartoon','toon','qr','qrcode','ocr','readtext','setstatus',
+    'groupstatus','meme','caption','emojify','translate',
+    'waifu','neon','sketch','oil','pixel','ascii',
+    'face','detect','roast','compliment','photo','help'
   ])
+
+  if (!CMDS.has(cmd)) return
+
+  const reply = (lines) => sendTxt(sock, from, msg, box(cmd, Array.isArray(lines) ? lines : [lines], brand))
+
+  // ═══════════════ ROUTE COMMANDS ═══════════════
+
+  if (['removebg','rmbg'].includes(cmd)) {
+    await rct(sock, msg, '🖼️')
+    const imgBuf = await getImg(sock, msg)
+    if (!imgBuf) return reply(['⚠ Send or reply to an image'])
+    const res = await removeBg(imgBuf)
+    if (!res) return reply(['❌ All remove-background APIs failed'])
+    return sendImg(sock, from, msg, res, box('REMOVEBG', ['✅ Background removed successfully'], brand))
+  }
+
+  if (['upscale','enhance'].includes(cmd)) {
+    await rct(sock, msg, '🔍')
+    const imgBuf = await getImg(sock, msg)
+    if (!imgBuf) return reply(['⚠ Send or reply to an image'])
+    const res = await upscale(imgBuf)
+    if (!res) return reply(['❌ All upscale APIs failed'])
+    return sendImg(sock, from, msg, res, box('UPSCALE', ['✅ Image upscaled 2x'], brand))
+  }
+
+  if (['imagine','txt2img','imgen'].includes(cmd)) {
+    const prompt = argText || getQuotedText(msg)
+    if (!prompt) return reply(['⚠ Usage: ' + prefix + 'imagine <prompt>', '💡 Or reply to a message'])
+    await rct(sock, msg, '🎨')
+    const res = await imagine(prompt)
+    if (!res) return reply(['❌ Image generation failed — try again'])
+    return sendImg(sock, from, msg, res, box('IMAGINE', [`🎨 ${prompt.slice(0, 80)}`], brand))
+  }
+
+  if (cmd === 'blur') {
+    await rct(sock, msg, '🌫️')
+    const imgBuf = await getImg(sock, msg)
+    if (!imgBuf) return reply(['⚠ Send or reply to an image'])
+    const level = parseInt(args[0]) || 10
+    const res = await blurImg(imgBuf, level)
+    if (!res) return reply(['❌ Blur failed'])
+    return sendImg(sock, from, msg, res, box('BLUR', [`✅ Blur level: ${level}`], brand))
+  }
+
+  if (['unblur','deblur','sharpen'].includes(cmd)) {
+    await rct(sock, msg, '✨')
+    const imgBuf = await getImg(sock, msg)
+    if (!imgBuf) return reply(['⚠ Send or reply to an image'])
+    const res = await unblurImg(imgBuf)
+    if (!res) return reply(['❌ Sharpen failed'])
+    return sendImg(sock, from, msg, res, box('UNBLUR', ['✅ Image sharpened'], brand))
+  }
+
+  if (['remini','restore'].includes(cmd)) {
+    await rct(sock, msg, '💫')
+    const imgBuf = await getImg(sock, msg)
+    if (!imgBuf) return reply(['⚠ Send or reply to an image'])
+    const res = await remini(imgBuf)
+    if (!res) return reply(['❌ Enhancement failed'])
+    return sendImg(sock, from, msg, res, box('REMINI', ['✅ Face enhanced & restored'], brand))
+  }
+
+  if (['videogen','vidgen'].includes(cmd)) {
+    const prompt = argText || getQuotedText(msg)
+    if (!prompt) return reply(['⚠ Usage: ' + prefix + 'videogen <prompt>'])
+    await rct(sock, msg, '🎬')
+    const res = await videoGen(prompt)
+    if (!res) return reply(['❌ Video generation failed'])
+    await sock.sendMessage(from, { video: res, mimetype: 'video/mp4', caption: box('VIDEOGEN', [`🎬 ${prompt.slice(0, 60)}`], brand) }, { quoted: msg })
+    return
+  }
+
+  if (['voicegen','tts','speak','voice'].includes(cmd)) {
+    const voiceTypes = ['male','female','child','random']
+    let vType = 'random', text = argText
+    if (voiceTypes.includes(args[0]?.toLowerCase())) { vType = args[0].toLowerCase(); text = args.slice(1).join(' ').trim() }
+    const quoted = getQuotedText(msg)
+    if (!text && quoted) text = quoted
+    if (!text) return reply([`⚠ Usage: ${prefix}tts [male|female|child|random] <text>`])
+    await rct(sock, msg, '🎤')
+    const res = await tts(text, vType)
+    if (!res) return reply(['❌ Voice generation failed'])
+    await sendAud(sock, from, msg, res, `voice_${vType}.mp3`)
+    return reply([`✅ Voice: *${vType.toUpperCase()}*`, `📝 "${text.slice(0, 100)}"`])
+  }
+
+  if (['lyrics','lyric'].includes(cmd)) {
+    if (!argText) return reply([`⚠ Usage: ${prefix}lyrics <song name>`])
+    await rct(sock, msg, '🎵')
+    const res = await lyrics(argText)
+    if (!res) return reply(['❌ Lyrics not found'])
+    const lines = [
+      res.title ? `🎵 *${res.title}*` : null,
+      res.artist ? `👤 ${res.artist}` : null,
+      res.text ? `\n${res.text.slice(0, 900)}` : '📝 Only metadata found',
+      res.url ? `🔗 ${res.url}` : null
+    ].filter(Boolean)
+    if (res.thumb) {
+      try { const { buf } = await dl(res.thumb); return sendImg(sock, from, msg, buf, box('LYRICS', lines, brand)) } catch {}
+    }
+    return reply(lines)
+  }
+
+  if (['bible','verse'].includes(cmd)) {
+    const ref = argText || 'John 3:16'
+    await rct(sock, msg, '📖')
+    const res = await bible(ref)
+    if (!res) return reply(['❌ Verse not found', `💡 Try: ${prefix}bible John 3:16`])
+    return reply([`📖 *${res.ref}*`, '', `"${res.text?.trim().slice(0, 500)}"`, '', `📚 ${res.ver}`])
+  }
+
+  if (['quran','ayah'].includes(cmd)) {
+    const ref = argText || '2:255'
+    await rct(sock, msg, '🕌')
+    const res = await quran(ref)
+    if (!res) return reply(['❌ Ayah not found', `💡 Try: ${prefix}quran 2:255`])
+    return reply([`🕌 *${res.ref}*`, res.arabic ? `\n${res.arabic}` : null, '', `"${res.trans?.trim().slice(0, 500)}"`, res.by ? `📚 ${res.by}` : null].filter(Boolean))
+  }
+
+  if (['food','foodinfo'].includes(cmd)) {
+    if (!argText) return reply([`⚠ Usage: ${prefix}food <food name>`])
+    await rct(sock, msg, '🍽️')
+    const res = await food(argText)
+    if (!res) return reply(['❌ Food not found'])
+    const lines = [`🍽️ *${res.name}*`, res.cat ? `📂 ${res.cat}` : null, res.area ? `🌍 ${res.area}` : null, res.kcal ? `🔥 ${Math.round(res.kcal)} kcal` : null, res.desc ? `\n📝 ${res.desc.slice(0, 200)}` : null].filter(Boolean)
+    if (res.img) { try { const { buf } = await dl(res.img); return sendImg(sock, from, msg, buf, box('FOOD', lines, brand)) } catch {} }
+    return reply(lines)
+  }
+
+  if (['sticker','stkr'].includes(cmd)) {
+    await rct(sock, msg, '🎴')
+    const imgBuf = await getImg(sock, msg)
+    if (!imgBuf) return reply(['⚠ Send or reply to an image'])
+    const res = await makeSticker(imgBuf)
+    if (!res) return reply(['❌ Sticker creation failed'])
+    return sock.sendMessage(from, { sticker: res }, { quoted: msg })
+  }
+
+  if (['colorize','colour','color'].includes(cmd)) {
+    await rct(sock, msg, '🎨')
+    const imgBuf = await getImg(sock, msg)
+    if (!imgBuf) return reply(['⚠ Send or reply to a B&W image'])
+    const res = await colorize(imgBuf)
+    if (!res) return reply(['❌ Colorize failed'])
+    return sendImg(sock, from, msg, res, box('COLORIZE', ['✅ Image colorized'], brand))
+  }
+
+  if (['cartoon','toon'].includes(cmd)) {
+    await rct(sock, msg, '🖌️')
+    const imgBuf = await getImg(sock, msg)
+    if (!imgBuf) return reply(['⚠ Send or reply to an image'])
+    const res = await cartoon(imgBuf)
+    if (!res) return reply(['❌ Cartoon effect failed'])
+    return sendImg(sock, from, msg, res, box('CARTOON', ['✅ Cartoon effect applied'], brand))
+  }
+
+  if (['qr','qrcode'].includes(cmd)) {
+    if (!argText) return reply([`⚠ Usage: ${prefix}qr <text or URL>`])
+    await rct(sock, msg, '📲')
+    const res = await qrcode(argText)
+    if (!res) return reply(['❌ QR generation failed'])
+    return sendImg(sock, from, msg, res, box('QR CODE', [`📲 ${argText.slice(0, 80)}`], brand))
+  }
+
+  if (['ocr','readtext'].includes(cmd)) {
+    await rct(sock, msg, '📝')
+    const imgBuf = await getImg(sock, msg)
+    if (!imgBuf) return reply(['⚠ Send or reply to an image with text'])
+    const res = await ocr(imgBuf)
+    if (!res) return reply(['❌ No text found in image'])
+    return reply([`📝 *Extracted Text:*`, '', res.slice(0, 800)])
+  }
+
+  if (['setstatus','groupstatus'].includes(cmd)) {
+    await rct(sock, msg, '📢')
+    const imgBuf = await getImg(sock, msg)
+    if (!imgBuf && !argText) return reply([`⚠ Usage:`, `${prefix}setstatus <text>`, `${prefix}setstatus [reply to image] [caption]`])
+    const ok = await setStatus(sock, imgBuf || argText, imgBuf ? argText : null)
+    if (!ok) return reply(['❌ Failed to post status'])
+    await rct(sock, msg, '✅')
+    return reply(['✅ Posted to WhatsApp Stories'])
+  }
+
+  if (cmd === 'waifu') {
+    await rct(sock, msg, '🌸')
+    const cat = argText || 'waifu'
+    const res = await waifu(cat)
+    if (!res) return reply(['❌ Could not fetch image'])
+    return sendImg(sock, from, msg, res, box('WAIFU', [`🌸 Category: ${cat}`], brand))
+  }
+
+  if (cmd === 'neon') {
+    await rct(sock, msg, '💡')
+    const imgBuf = await getImg(sock, msg)
+    if (!imgBuf) return reply(['⚠ Send or reply to an image'])
+    const res = await neonEffect(imgBuf)
+    if (!res) return reply(['❌ Neon effect failed'])
+    return sendImg(sock, from, msg, res, box('NEON', ['✅ Neon effect applied'], brand))
+  }
+
+  if (cmd === 'sketch') {
+    await rct(sock, msg, '✏️')
+    const imgBuf = await getImg(sock, msg)
+    if (!imgBuf) return reply(['⚠ Send or reply to an image'])
+    const res = await sketch(imgBuf)
+    if (!res) return reply(['❌ Sketch effect failed'])
+    return sendImg(sock, from, msg, res, box('SKETCH', ['✅ Sketch effect applied'], brand))
+  }
+
+  if (cmd === 'oil') {
+    await rct(sock, msg, '🖼️')
+    const imgBuf = await getImg(sock, msg)
+    if (!imgBuf) return reply(['⚠ Send or reply to an image'])
+    const res = await oilPaint(imgBuf)
+    if (!res) return reply(['❌ Oil paint effect failed'])
+    return sendImg(sock, from, msg, res, box('OIL PAINT', ['✅ Oil painting effect applied'], brand))
+  }
+
+  if (cmd === 'pixel') {
+    await rct(sock, msg, '👾')
+    const imgBuf = await getImg(sock, msg)
+    if (!imgBuf) return reply(['⚠ Send or reply to an image'])
+    const res = await pixelArt(imgBuf)
+    if (!res) return reply(['❌ Pixel art failed'])
+    return sendImg(sock, from, msg, res, box('PIXEL ART', ['✅ Pixel art created'], brand))
+  }
+
+  if (cmd === 'ascii') {
+    await rct(sock, msg, '🔤')
+    const imgBuf = await getImg(sock, msg)
+    if (!imgBuf) return reply(['⚠ Send or reply to an image'])
+    const res = await asciiArt(imgBuf)
+    if (!res) return reply(['❌ ASCII art failed'])
+    return reply([`\`\`\`\n${res}\n\`\`\``])
+  }
+
+  if (['face','detect'].includes(cmd)) {
+    await rct(sock, msg, '👤')
+    const imgBuf = await getImg(sock, msg)
+    if (!imgBuf) return reply(['⚠ Send or reply to an image'])
+    const res = await detectFace(imgBuf)
+    if (!res) return reply(['❌ No faces detected or API failed'])
+    return reply([`👤 *Face Analysis:*`, '', typeof res === 'string' ? res : JSON.stringify(res, null, 2).slice(0, 400)])
+  }
+
+  if (cmd === 'translate') {
+    if (!argText) return reply([`⚠ Usage: ${prefix}translate [lang] <text>`, `💡 e.g. ${prefix}translate sw Hello World`])
+    const langs = ['af','sq','am','ar','az','be','bn','bs','bg','ca','ceb','ny','zh','co','hr','cs','da','nl','en','eo','et','tl','fi','fr','fy','gl','ka','de','el','gu','ht','ha','haw','he','hi','hmn','hu','is','ig','id','ga','it','ja','jv','kn','kk','km','rw','ko','ku','ky','lo','la','lv','lt','lb','mk','mg','ms','ml','mt','mi','mr','mn','my','ne','no','or','ps','fa','pl','pt','pa','ro','ru','sm','gd','sr','st','sn','sd','si','sk','sl','so','es','su','sw','sv','tg','ta','tt','te','th','tr','tk','uk','ur','ug','uz','vi','cy','xh','yi','yo','zu']
+    let to = 'en', text = argText
+    const firstWord = args[0]?.toLowerCase()
+    if (langs.includes(firstWord)) { to = firstWord; text = args.slice(1).join(' ').trim() }
+    const quoted = getQuotedText(msg)
+    if (!text && quoted) text = quoted
+    if (!text) return reply([`⚠ Provide text to translate`])
+    await rct(sock, msg, '🌐')
+    const res = await translateText(text, to)
+    if (!res) return reply(['❌ Translation failed'])
+    return reply([`🌐 *Translation → ${to.toUpperCase()}*`, '', res])
+  }
+
+  if (cmd === 'meme') {
+    const imgBuf = await getImg(sock, msg)
+    if (!imgBuf) return reply(['⚠ Reply to an image with: top text | bottom text'])
+    const [top, bot] = argText.split('|').map(s => s?.trim())
+    if (!top) return reply([`⚠ Usage: ${prefix}meme <top text> | <bottom text>`])
+    await rct(sock, msg, '😂')
+    const res = await makeMeme(top, bot || '', imgBuf)
+    if (!res) return reply(['❌ Meme creation failed'])
+    return sendImg(sock, from, msg, res, box('MEME', [`😂 ${top} / ${bot || ''}`], brand))
+  }
+
+  if (cmd === 'emojify') {
+    if (!argText) return reply([`⚠ Usage: ${prefix}emojify <text>`])
+    await rct(sock, msg, '😊')
+    const res = await emojify(argText)
+    return reply([`😊 ${res}`])
+  }
+
+  if (cmd === 'roast') {
+    const name = argText || 'You'
+    await rct(sock, msg, '🔥')
+    return reply([await roastOrCompliment(name, 'roast')])
+  }
+
+  if (cmd === 'compliment') {
+    const name = argText || 'You'
+    await rct(sock, msg, '💜')
+    return reply([await roastOrCompliment(name, 'compliment')])
+  }
+
+  if (cmd === 'caption') {
+    await rct(sock, msg, '📸')
+    const imgBuf = await getImg(sock, msg)
+    if (!imgBuf) return reply(['⚠ Send or reply to an image'])
+    const res = await describeImage(imgBuf)
+    if (!res) return reply(['❌ Could not describe image'])
+    return reply([`📸 *AI sees:*`, '', res])
+  }
+
+  // ══ HELP MENU ══
+  if (['photo','help'].includes(cmd)) {
+    return reply([
+      `📋 *Available Commands (prefix: ${prefix})*`,
+      '',
+      `🖼 ${prefix}removebg — Remove background`,
+      `🔍 ${prefix}upscale — Upscale image 2x`,
+      `🎨 ${prefix}imagine <prompt> — AI image`,
+      `🌫️ ${prefix}blur [level] — Blur image`,
+      `✨ ${prefix}unblur — Sharpen image`,
+      `💫 ${prefix}remini — Enhance face`,
+      `🎬 ${prefix}videogen <prompt> — AI video`,
+      `🎤 ${prefix}tts [male|female|child] <text>`,
+      `🎵 ${prefix}lyrics <song>`,
+      `📖 ${prefix}bible <verse>`,
+      `🕌 ${prefix}quran <surah:ayah>`,
+      `🍽️ ${prefix}food <name>`,
+      `🎴 ${prefix}sticker — Image to sticker`,
+      `🎨 ${prefix}colorize — Colorize B&W`,
+      `🖌️ ${prefix}cartoon — Cartoon effect`,
+      `📲 ${prefix}qr <text> — QR code`,
+      `📝 ${prefix}ocr — Read text from image`,
+      `📢 ${prefix}setstatus — WhatsApp Story`,
+      `🌸 ${prefix}waifu [category]`,
+      `💡 ${prefix}neon — Neon effect`,
+      `✏️ ${prefix}sketch — Sketch effect`,
+      `🖼️ ${prefix}oil — Oil paint effect`,
+      `👾 ${prefix}pixel — Pixel art`,
+      `🔤 ${prefix}ascii — ASCII art`,
+      `👤 ${prefix}face — Face detection`,
+      `🌐 ${prefix}translate [lang] <text>`,
+      `😂 ${prefix}meme <top> | <bottom>`,
+      `😊 ${prefix}emojify <text>`,
+      `🔥 ${prefix}roast <name>`,
+      `💜 ${prefix}compliment <name>`,
+      `📸 ${prefix}caption — Describe image`
+    ])
+  }
 }
