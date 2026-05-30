@@ -21,7 +21,7 @@ export default async function autobio(sock, { msg, from, sender }, botSettings) 
     const { data: settings } = await botSettings.supabase
 .from('b_settings')
 .select('autobio')
-.eq('id', targetJid)
+.eq('id', instanceId)
 .maybeSingle()
 
     const currentValue = settings?.autobio || false
