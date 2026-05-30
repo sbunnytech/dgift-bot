@@ -4,7 +4,7 @@ export const alias = ['autolike', 'likestatus', 'autols']
 export const category = 'Settings'
 export const desc = 'Toggle auto like status on/off'
 
-export default async function autolikestatus(sock, { msg, from, sender }, botSettings) {
+export default async function autolikestatus(sock, { msg, from, sender, instanceId }, botSettings) {
   try {
     // Angalia kama database ipo
     if (!botSettings.supabase) {
@@ -15,14 +15,20 @@ export default async function autolikestatus(sock, { msg, from, sender }, botSet
     const args = body.trim().split(' ').slice(1)
     const action = args[0]?.toLowerCase()
 
-    const targetJid = 'DGIFT_DEFAULT' // global setting tu
+    // FIX: Tumia instanceId moja kwa moja
+    const targetJid = instanceId
 
     // Chukua status ya sasa
-    const { data: settings } = await botSettings.supabase
- .from('b_settings')
- .select('autolikestatus')
- .eq('id', targetJid)
- .maybeSingle()
+    const { data: settings, error: fetchError } = await botSettings.supabase
+  .from('b_settings')
+  .select('autolikestatus')
+  .eq('id', targetJid)
+  .maybeSingle()
+
+    if (fetchError) {
+      console.error('[AUTOLIKE FETCH ERROR]', fetchError)
+      return sock.sendMessage(from, { text: '> Database fetch error.' }, { quoted: msg })
+    }
 
     const currentValue = settings?.autolikestatus || false
 
@@ -32,7 +38,7 @@ export default async function autolikestatus(sock, { msg, from, sender }, botSet
       return await sock.sendMessage(from, {
         text: `╭─⌈ ❤️ *AutoLike Status Control* ⌋
 │ Status: ${currentValue? 'ON ✅' : 'OFF ❌'}
-│ Target: Global 🌍
+│ Instance: ${targetJid}
 │
 │ Usage:
 │ ${botSettings.prefix}autolikestatus on
@@ -51,10 +57,10 @@ export default async function autolikestatus(sock, { msg, from, sender }, botSet
       return await sock.sendMessage(from, { text: `> AutoLikeStatus is already ${action}` }, { quoted: msg })
     }
 
-    // Sasisha database
+    // Sasisha database kwa instanceId
     const { error } = await botSettings.supabase
- .from('b_settings')
- .upsert({
+  .from('b_settings')
+  .upsert({
         id: targetJid,
         autolikestatus: newValue,
         updated_at: new Date().toISOString()
@@ -71,7 +77,7 @@ export default async function autolikestatus(sock, { msg, from, sender }, botSet
     await sock.sendMessage(from, { react: { text: newValue? '✅' : '❌', key: msg.key } })
     await sock.sendMessage(from, {
       text: `╭─⌈ ❤️ *Settings Updated* ⌋
-│ Target: Global 🌍
+│ Instance: ${targetJid}
 │ AutoLikeStatus: ${newValue? 'ON ✅' : 'OFF ❌'}
 │
 │ ${newValue? 'Bot will now like all statuses automatically.' : 'Auto like status has been disabled.'}

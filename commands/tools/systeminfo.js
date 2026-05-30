@@ -33,7 +33,7 @@ export default async function systeminfo(sock, { msg, from, pushName, sender }, 
     const procMemExternal = (mem.external / 1024 / 1024).toFixed(1)
 
     const sysTotal = os.totalmem()
-    const sysFree = os.freem()
+    const sysFree = os.freem() 
     const sysUsed = sysTotal - sysFree
     const sysUsedPercent = Math.round((sysUsed / sysTotal) * 100)
     const sysTotalGB = (sysTotal / 1024 / 1024 / 1024).toFixed(1)
@@ -59,25 +59,29 @@ export default async function systeminfo(sock, { msg, from, pushName, sender }, 
     if (process.env.RENDER) hosting = 'Render'
     else if (process.env.RAILWAY_ENVIRONMENT) hosting = 'Railway'
     else if (process.env.DYNO) hosting = 'Heroku'
-    else if (process.env.VERCEL) hosting = 'Vercel'
+    else if (process.env.VERCEL) hosting = 'Vercel' 
     else if (process.env.KUBERNETES_SERVICE_HOST) hosting = 'Kubernetes'
     else if (process.env.HOSTINGER) hosting = 'Hostinger'
     else if (hostname.includes('railway')) hosting = 'Railway'
     else if (hostname.includes('render')) hosting = 'Render'
     else if (platform === 'linux' &&!process.env.PWD?.includes('/home')) hosting = 'VPS/Linux Server'
 
-    // Commands Stats
+    // Commands Stats 
     const allCommands = getAllCommands()
-    const cmdCount = allCommands.size
+    const cmdCount = Array.isArray(allCommands)? allCommands.length : allCommands?.size || 0
     const categories = new Set()
-    for (const [cmdName, cmdData] of allCommands) {
-      categories.add(cmdData.category || 'Other')
+    if (Array.isArray(allCommands)) {
+      allCommands.forEach(cmd => categories.add(cmd.category || 'Other'))
+    } else if (allCommands instanceof Map) {
+      for (const [cmdName, cmdData] of allCommands) {
+        categories.add(cmdData.category || 'Other')
+      }
     }
 
     // Node & Bot Info
     const nodeVer = process.version
-    const botName = botSettings.botname || 'DGIFT BOT'
-    const brandName = botSettings.brand_name || botSettings.owner_name || 'DGIFT'
+    const botName = botSettings.botname || 'Bot'
+    const brandName = botSettings.brand_name || botSettings.owner_name || 'Bot'
     const prefix = botSettings.prefix || '.'
     const userIdentity = pushName || sender.split('@')[0]
 
