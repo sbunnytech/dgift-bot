@@ -15,7 +15,7 @@
     "node": "20.11.1"
   },
   "dependencies": {
-    "@whiskeysockets/baileys": "6.7.22",
+    "@whiskeysockets/baileys": "6.7.18",
     "@supabase/supabase-js": "^2.43.0",
     "@distube/ytdl-core": "^4.15.1",
     "ws": "^8.16.0",
