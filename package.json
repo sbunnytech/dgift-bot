@@ -1,21 +1,21 @@
 {
-  "name": "dgift-bot",
+  "name": "BUNNY-MD",
   "version": "1.0.0",
-  "description": "DGIFT BOT - WhatsApp Bot na Baileys + Supabase + Pair Code + QR Live + Group Code System",
+  "description": "BUNNY TECH- WhatsApp Bot na Baileys + Supabase + Pair Code + QR Live + Group Code System",
   "main": "index.js",
   "type": "module",
   "scripts": {
     "start": "node index.js",
     "dev": "node --watch index.js"
   },
-  "author": "obashjalash-droid",
-  "contact": "0748548334",
+  "author": "Lupin Starnley",
+  "contact": "255780470905",
   "license": "ISC",
   "engines": {
     "node": "20.11.1"
   },
   "dependencies": {
-    "@whiskeysockets/baileys": "6.7.18",
+    "@whiskeysockets/baileys": "6.7.22",
     "@supabase/supabase-js": "^2.43.0",
     "@distube/ytdl-core": "^4.15.1",
     "ws": "^8.16.0",
