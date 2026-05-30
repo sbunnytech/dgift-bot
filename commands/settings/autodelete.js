@@ -4,7 +4,7 @@ export const alias = ['antidl', 'nodelete']
 export const category = 'Settings'
 export const desc = 'Toggle anti delete on/off'
 
-export default async function antidelete(sock, { msg, from, sender }, botSettings) {
+export default async function antidelete(sock, { msg, from, sender, instanceId }, botSettings) {
   try {
     // Angalia kama database ipo
     if (!botSettings.supabase) {
@@ -15,14 +15,20 @@ export default async function antidelete(sock, { msg, from, sender }, botSetting
     const args = body.trim().split(' ').slice(1)
     const action = args[0]?.toLowerCase()
 
-    const targetJid = 'DGIFT_DEFAULT' // global setting tu
+    // FIX: Tumia instanceId moja kwa moja
+    const targetJid = instanceId
 
     // Chukua status ya sasa
-    const { data: settings } = await botSettings.supabase
-.from('b_settings')
-.select('antidelete')
-.eq('id', instanceId)
-.maybeSingle()
+    const { data: settings, error: fetchError } = await botSettings.supabase
+ .from('b_settings')
+ .select('antidelete')
+ .eq('id', targetJid)
+ .maybeSingle()
+
+    if (fetchError) {
+      console.error('[ANTIDELETE FETCH ERROR]', fetchError)
+      return sock.sendMessage(from, { text: '> Database fetch error.' }, { quoted: msg })
+    }
 
     const currentValue = settings?.antidelete || false
 
@@ -32,7 +38,7 @@ export default async function antidelete(sock, { msg, from, sender }, botSetting
       return await sock.sendMessage(from, {
         text: `╭─⌈ 🗑️ *AntiDelete Control* ⌋
 │ Status: ${currentValue? 'ON ✅' : 'OFF ❌'}
-│ Target: Global
+│ Instance: ${targetJid}
 │
 │ Usage:
 │ ${botSettings.prefix}antidelete on
@@ -51,10 +57,10 @@ export default async function antidelete(sock, { msg, from, sender }, botSetting
       return await sock.sendMessage(from, { text: `> AntiDelete is already ${action}` }, { quoted: msg })
     }
 
-    // Sasisha database
+    // Sasisha database kwa instanceId
     const { error } = await botSettings.supabase
-.from('b_settings')
-.upsert({
+ .from('b_settings')
+ .upsert({
         id: targetJid,
         antidelete: newValue,
         updated_at: new Date().toISOString()
@@ -71,7 +77,7 @@ export default async function antidelete(sock, { msg, from, sender }, botSetting
     await sock.sendMessage(from, { react: { text: newValue? '✅' : '❌', key: msg.key } })
     await sock.sendMessage(from, {
       text: `╭─⌈ 🗑️ *Settings Updated* ⌋
-│ Target: Global 🌍
+│ Instance: ${targetJid}
 │ AntiDelete: ${newValue? 'ON ✅' : 'OFF ❌'}
 │
 │ ${newValue? 'Deleted messages will be recovered.' : 'Message recovery is disabled.'}
