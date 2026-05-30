@@ -4,7 +4,7 @@ export const alias = ['autotype', 'typingon']
 export const category = 'Settings'
 export const desc = 'Toggle auto typing presence on/off'
 
-export default async function autotyping(sock, { msg, from, sender }, botSettings) {
+export default async function autotyping(sock, { msg, from, sender, instanceId }, botSettings) {
   try {
     // Angalia kama database ipo
     if (!botSettings.supabase) {
@@ -15,14 +15,20 @@ export default async function autotyping(sock, { msg, from, sender }, botSetting
     const args = body.trim().split(' ').slice(1)
     const action = args[0]?.toLowerCase()
 
-    const targetJid = 'instanceId' // global setting tu
+    // FIX: Tumia instanceId variable, siyo string 'instanceId'
+    const targetJid = instanceId
 
     // Chukua status ya sasa
-    const { data: settings } = await botSettings.supabase
-.from('b_settings')
-.select('autopresencecomposing')
-.eq('id', targetJid)
-.maybeSingle()
+    const { data: settings, error: fetchError } = await botSettings.supabase
+  .from('b_settings')
+  .select('autopresencecomposing')
+  .eq('id', targetJid)
+  .maybeSingle()
+
+    if (fetchError) {
+      console.error('[AUTOTYPING FETCH ERROR]', fetchError)
+      return sock.sendMessage(from, { text: '> Database fetch error.' }, { quoted: msg })
+    }
 
     const currentValue = settings?.autopresencecomposing || false
 
@@ -32,7 +38,7 @@ export default async function autotyping(sock, { msg, from, sender }, botSetting
       return await sock.sendMessage(from, {
         text: `╭─⌈ ⌨️ *AutoTyping Control* ⌋
 │ Status: ${currentValue? 'ON ✅' : 'OFF ❌'}
-│ Target: Global
+│ Instance: ${targetJid}
 │
 │ Usage:
 │ ${botSettings.prefix}autotyping on
@@ -53,15 +59,15 @@ export default async function autotyping(sock, { msg, from, sender }, botSetting
 
     // Sasisha database
     const { error } = await botSettings.supabase
-.from('b_settings')
-.upsert(
-    {
+  .from('b_settings')
+  .upsert(
+      {
         id: targetJid,
         autopresencecomposing: newValue,
         updated_at: new Date().toISOString()
-    },
-    { onConflict: 'id' }
-  )
+      },
+      { onConflict: 'id' }
+    )
 
     if (error) {
       await sock.sendMessage(from, { react: { text: '❌', key: msg.key } })
@@ -74,7 +80,7 @@ export default async function autotyping(sock, { msg, from, sender }, botSetting
     await sock.sendMessage(from, { react: { text: newValue? '✅' : '❌', key: msg.key } })
     await sock.sendMessage(from, {
       text: `╭─⌈ ⌨️ *Settings Updated* ⌋
-│ Target: Global 🌍
+│ Instance: ${targetJid}
 │ AutoTyping: ${newValue? 'ON ✅' : 'OFF ❌'}
 │
 │ ${newValue? 'Bot will now show typing indicator.' : 'Auto typing has been disabled.'}
