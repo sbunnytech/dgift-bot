@@ -1,4 +1,3 @@
-// observers/business.js
 import axios from 'axios'
 
 const businessMemory = new Map() // chatId -> { history: [], timeout: NodeJS.Timeout }
@@ -21,10 +20,10 @@ async function getBusinessConfig(botSettings) {
   if (!botSettings?.supabase ||!botSettings?.instance_id) return { on: false }
   try {
     const { data } = await botSettings.supabase
-    .from('b_settings')
-    .select('ai_on, ai_prompt, ai_model, ai_me, chatbot_scope, allowed_groups, allowed_dms, botname, owner_name, owner_number, brand_name')
-    .eq('id', botSettings.instance_id)
-    .maybeSingle()
+   .from('b_settings')
+   .select('ai_on, ai_prompt, ai_model, ai_me, chatbot_scope, allowed_groups, allowed_dms, botname, owner_name, owner_number, brand_name')
+   .eq('id', botSettings.instance_id)
+   .maybeSingle()
 
     return {
       on: data?.ai_on === true,
@@ -47,12 +46,11 @@ async function getBusinessConfig(botSettings) {
 
 function buildBusinessPrompt(template, config) {
   let prompt = template
-  .replace(/{botname}/g, config.botname)
-  .replace(/{owner_name}/g, config.owner_name)
-  .replace(/{owner_number}/g, config.owner_number || 'Private')
-  .replace(/{brand_name}/g, config.brand_name)
+ .replace(/{botname}/g, config.botname)
+ .replace(/{owner_name}/g, config.owner_name)
+ .replace(/{owner_number}/g, config.owner_number || 'Private')
+ .replace(/{brand_name}/g, config.brand_name)
 
-  // Ikiwa ai_me=true, AI inajitambulisha kama wewe
   if (config.aiMe) {
     prompt += `\nYou are ${config.owner_name}. This is your business WhatsApp number: ${config.owner_number}.
 Speak as the owner. Be professional, helpful, sell the products. Always reply in user's language.`
@@ -89,10 +87,34 @@ async function downloadMedia(sock, msg) {
   }
 }
 
+async function callGroq(messages, groqKey) {
+  try {
+    const res = await axios.post(
+      'https://api.groq.com/openai/v1/chat/completions',
+      {
+        model: 'llama-3.3-70b-versatile',
+        messages: messages,
+        temperature: 0.7,
+        max_tokens: 500
+      },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${groqKey}`
+        },
+        timeout: 25000
+      }
+    )
+    return res.data?.choices?.[0]?.message?.content?.trim() || ''
+  } catch (e) {
+    console.log('[GROQ ERROR]', e.response?.data?.error?.message || e.message)
+    return ''
+  }
+}
+
 export default async function business(sock, { msg, from, isProtected, isFromMe }, botSettings) {
   try {
     if (isProtected || isFromMe ||!msg?.message) return
-    if (!process.env.OPENROUTER_API_KEY) return
 
     const config = await getBusinessConfig(botSettings)
     if (!config.on) return
@@ -112,59 +134,69 @@ export default async function business(sock, { msg, from, isProtected, isFromMe 
     const mem = getMemory(from)
     const mediaData = await downloadMedia(sock, msg)
 
-    // Build prompt kwa instance hii - INAFUATA PROMPT YA DB
     const systemPrompt = buildBusinessPrompt(config.prompt, config)
     const messages = [{ role: 'system', content: systemPrompt },...mem.history]
 
-    // Multimodal - picha, video, document, sticker
+    // Multimodal - Groq haisupporti picha, so tuma text tu kama kuna picha
     if (mediaData && text) {
-      const mimeType = mediaData.type === 'imageMessage'? 'image/jpeg' :
-                       mediaData.type === 'videoMessage'? 'video/mp4' :
-                       mediaData.type === 'documentMessage'? 'application/pdf' : 'image/webp'
-      messages.push({
-        role: 'user',
-        content: [
-          { type: 'text', text },
-          { type: 'image_url', image_url: { url: `data:${mimeType};base64,${mediaData.buffer.toString('base64')}` } }
-        ]
-      })
+      messages.push({ role: 'user', content: text + ' [User sent media]' })
     } else if (mediaData) {
-      messages.push({ role: 'user', content: [{ type: 'image_url', image_url: { url: `data:image/jpeg;base64,${mediaData.buffer.toString('base64')}` } }] })
+      messages.push({ role: 'user', content: '[User sent media]' })
     } else {
       messages.push({ role: 'user', content: text })
     }
 
-    // Call OpenRouter - MODEL YOYOTE ITAFANYA KAZI
-    const res = await axios.post(
-      'https://openrouter.ai/api/v1/chat/completions',
-      {
-        model: config.model, // HAPA NDIO MAGIC - Model yoyote ya OpenRouter
-        messages: messages,
-        temperature: 0.7,
-        max_tokens: 500
-      },
-      {
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
-          'HTTP-Referer': 'https://dgift-bot',
-          'X-Title': `${config.botname} Business`
-        },
-        timeout: 30000
-      }
-    )
+    let reply = ''
+    let usedModel = ''
 
-    const reply = res.data?.choices?.[0]?.message?.content?.trim() || ''
-    if (!reply) return
+    // 1. Jaribu OpenRouter kwanza
+    if (process.env.OPENROUTER_API_KEY) {
+      try {
+        const res = await axios.post(
+          'https://openrouter.ai/api/v1/chat/completions',
+          {
+            model: config.model,
+            messages: messages,
+            temperature: 0.7,
+            max_tokens: 500
+          },
+          {
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
+              'HTTP-Referer': 'https://dgift-bot',
+              'X-Title': `${config.botname} Business`
+            },
+            timeout: 30000
+          }
+        )
+        reply = res.data?.choices?.[0]?.message?.content?.trim() || ''
+        usedModel = config.model
+        console.log(`[BUSINESS] OpenRouter OK | ${usedModel}`)
+      } catch (err) {
+        console.log('[BUSINESS] OpenRouter failed:', err.response?.data?.error?.message || err.message)
+      }
+    }
+
+    // 2. Kama OpenRouter imefeli, jaribu Groq
+    if (!reply && process.env.GROQ_API_KEY) {
+      console.log('[BUSINESS] Falling back to Groq...')
+      reply = await callGroq(messages, process.env.GROQ_API_KEY)
+      usedModel = 'groq/llama-3.3-70b-versatile'
+    }
+
+    if (!reply) {
+      console.log('[BUSINESS] Both OpenRouter and Groq failed')
+      return
+    }
 
     // Save memory - 12 messages tu
     mem.history.push({ role: 'user', content: text || `[${mediaData?.type || 'media'}]` })
     mem.history.push({ role: 'assistant', content: reply })
     if (mem.history.length > 12) mem.history = mem.history.slice(-12)
 
-    // Jibu bila react
     await sock.sendMessage(from, { text: reply }, { quoted: msg })
-    console.log(`[BUSINESS] ${from} | Model: ${config.model} | ai_me: ${config.aiMe}`)
+    console.log(`[BUSINESS] ${from} | Model: ${usedModel} | ai_me: ${config.aiMe}`)
 
   } catch (error) {
     console.log('[BUSINESS ERROR]', error?.response?.data?.error?.message || error.message)
