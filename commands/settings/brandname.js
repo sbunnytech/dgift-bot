@@ -7,7 +7,7 @@ export const desc = 'Change brand name shown in messages'
 export default async function setbrandname(sock, { msg, from, sender }, botSettings) {
   try {
     // Angalia kama database ipo
-    if (!botSettings.supabase) {
+    if (!botSettings.supabase ||!botSettings.instance_id) {
       return sock.sendMessage(from, { text: '> Database connection not ready.' }, { quoted: msg })
     }
 
@@ -15,14 +15,16 @@ export default async function setbrandname(sock, { msg, from, sender }, botSetti
     const args = body.trim().split(' ').slice(1)
     const newBrand = args.join(' ').trim()
 
-    // Chukua settings za sasa
+    const instanceId = botSettings.instance_id // KILA BOT NA DATA ZAKE - NO DEFAULT
+
+    // Chukua settings za instance hii - KAMA INDEX.JS
     const { data: settings } = await botSettings.supabase
    .from('b_settings')
    .select('brand_name, botname, prefix')
-   .eq('id', 'DGIFT_DEFAULT')
+   .eq('id', instanceId)
    .maybeSingle()
 
-    const currentBrand = settings?.brand_name || 'dgift-bot'
+    const currentBrand = settings?.brand_name || settings?.botname || 'dgift-bot'
     const botname = settings?.botname || 'dgift-bot'
     const prefix = settings?.prefix || '.'
 
@@ -30,15 +32,16 @@ export default async function setbrandname(sock, { msg, from, sender }, botSetti
     if (!newBrand) {
       await sock.sendMessage(from, { react: { text: '🏷️', key: msg.key } })
       return await sock.sendMessage(from, {
-        text: `╭─⌈ 🏷️ *Brand Name Settings* ⌋
+        text: `╭─⌈ 🏷️ *Brand Name Control* ⌋
+│ Bot: ${botname}
+│ Instance: ${instanceId}
 │ Current Brand: ${currentBrand}
-│ Bot Name: ${botname}
 │
 │ Usage:
 │ ${prefix}setbrandname Bunny Tech
 │ ${prefix}setbrandname Dgift-MD
 │
-│ Note: This only changes the name shown in message footers
+│ Note: Name inayotumika footer za message
 ╰⊷ *${botname}*`
       }, { quoted: msg })
     }
@@ -55,14 +58,14 @@ export default async function setbrandname(sock, { msg, from, sender }, botSetti
       return await sock.sendMessage(from, { text: `> Brand name is already set to "${currentBrand}"` }, { quoted: msg })
     }
 
-    // Sasisha database
+    // Sasisha database kwa upsert - KAMA INDEX.JS
     const { error } = await botSettings.supabase
    .from('b_settings')
-   .update({
+   .upsert({
+        id: instanceId,
         brand_name: newBrand,
         updated_at: new Date().toISOString()
-      })
-   .eq('id', 'DGIFT_DEFAULT')
+      }, { onConflict: 'id' })
 
     if (error) {
       await sock.sendMessage(from, { react: { text: '❌', key: msg.key } })
@@ -75,16 +78,18 @@ export default async function setbrandname(sock, { msg, from, sender }, botSetti
     await sock.sendMessage(from, { react: { text: '✅', key: msg.key } })
     await sock.sendMessage(from, {
       text: `╭─⌈ ✅ *Brand Name Updated* ⌋
+│ Bot: ${botname}
+│ Instance: ${instanceId}
 │ Old: ${currentBrand}
 │ New: ${newBrand}
 │ Status: Applied instantly
 │
 │ All message footers will use the new brand name now
-╰⊷ *${botname}*`
+╰⊷ *${newBrand}*`
     }, { quoted: msg })
 
   } catch (err) {
-    console.error(`[SETBRANDNAME ERROR]`, err.message)
+    console.error(`[SETBRANDNAME CMD ERROR]`, err.message)
     await sock.sendMessage(from, { react: { text: '❌', key: msg.key } })
     await sock.sendMessage(from, { text: '> Failed to update brand name.' }, { quoted: msg })
   }
