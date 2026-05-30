@@ -21,7 +21,7 @@ export default async function antidelete(sock, { msg, from, sender }, botSetting
     const { data: settings } = await botSettings.supabase
 .from('b_settings')
 .select('antidelete')
-.eq('id', targetJid)
+.eq('id', instanceId)
 .maybeSingle()
 
     const currentValue = settings?.antidelete || false
