@@ -1,44 +1,62 @@
 // observers/menureply.js
 export default async function menureply(sock, { msg, from, sender }, botSettings) {
   try {
-    if (msg.key.fromMe) return
-    if (!msg.message?.extendedTextMessage?.contextInfo?.quotedMessage) return
+    // 1. fromMe check IMEONDOLEWA - bot sasa inasoma messages zake pia
 
-    const quotedMsg = msg.message.extendedTextMessage.contextInfo.quotedMessage
-    const quotedText = quotedMsg.conversation || quotedMsg.imageMessage?.caption || ''
-    
-    // Angalia kama reply ni ya menu message yetu - inabidi iwe na "Choose a category"
-    if (!quotedText.includes('Choose a category') && !quotedText.includes('Reply with number')) return
+    // 2. Safe access kwa message body
+    const body = msg?.message?.extendedTextMessage?.text?.trim() ||
+                 msg?.message?.conversation?.trim() || ''
 
-    const body = msg.message.extendedTextMessage.text.trim()
+    // 3. Angalia kama ni namba tu
     const choice = parseInt(body)
+    if (isNaN(choice)) return
 
-    // Hifadhi categories za mwisho kwenye memory
-    if (!botSettings.lastMenuCategories || !botSettings.lastMenuFrom || botSettings.lastMenuFrom !== from) {
-      return sock.sendMessage(from, { text: '> Menu expired. Send menu again.' }, { quoted: msg })
+    // 4. Angalia kama kuna menu iliyohifadhiwa - IMEBAKI
+    if (!botSettings?.lastMenuCategories ||!Array.isArray(botSettings.lastMenuCategories)) {
+      return sock.sendMessage(from, { text: '> Menu expired. Send `menu` again.' }, { quoted: msg }).catch(() => {})
+    }
+
+    // 5. Angalia kama reply ni ya chat hii - IMEBAKI
+    if (botSettings.lastMenuFrom && botSettings.lastMenuFrom!== from) {
+      return sock.sendMessage(from, { text: '> Menu expired. Send `menu` again.' }, { quoted: msg }).catch(() => {})
     }
 
     const categories = botSettings.lastMenuCategories
-    if (isNaN(choice) || choice < 1 || choice > categories.length) {
-      return sock.sendMessage(from, { text: `> Invalid number. Reply 1-${categories.length}` }, { quoted: msg })
+    const commandsMap = botSettings.lastMenuCommands || {}
+    const emojisMap = botSettings.lastMenuEmojis || {}
+
+    // 6. Validate namba - IMEBAKI
+    if (choice < 1 || choice > categories.length) {
+      return sock.sendMessage(from, { text: `> Invalid number. Send 1-${categories.length}` }, { quoted: msg }).catch(() => {})
     }
 
+    // 7. Chukua category
     const selectedCat = categories[choice - 1]
-    const commands = botSettings.lastMenuCommands[selectedCat] || []
+    const commands = commandsMap[selectedCat] || []
     const prefix = botSettings.prefix || '!'
-    const catEmoji = botSettings.lastMenuEmojis[selectedCat] || '📁'
+    const catEmoji = emojisMap[selectedCat] || '📁'
 
-    await sock.sendMessage(from, { react: { text: '📂', key: msg.key } })
+    // 8. React
+    try {
+      await sock.sendMessage(from, { react: { text: '📂', key: msg.key } })
+    } catch {}
 
+    // 9. Build command list
     let cmdList = `╭──⌈ ${catEmoji} ${selectedCat} ⌋\n`
     commands.sort().forEach(cmd => {
       cmdList += `│ ${prefix}${cmd}\n`
     })
     cmdList += `╰────────────────\n\n*Total: ${commands.length} commands*`
 
-    await sock.sendMessage(from, { text: cmdList }, { quoted: msg })
+    // 10. Tuma
+    await sock.sendMessage(from, { text: cmdList }, { quoted: msg }).catch(async () => {
+      await sock.sendMessage(from, { text: cmdList }).catch(() => {})
+    })
 
   } catch (err) {
-    console.error('[MENUREPLY ERROR]', err.message)
+    console.error('[MENUREPLY CRASH]', err.message)
+    try {
+      await sock.sendMessage(from, { text: '> Error loading category. Send `menu` again.' }, { quoted: msg })
+    } catch {}
   }
 }
