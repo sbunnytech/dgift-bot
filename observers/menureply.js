@@ -1,22 +1,28 @@
-// observers/menureply.js
 export default async function menureply(sock, { msg, from, sender }, botSettings) {
   try {
-    // 1. fromMe check IMEONDOLEWA - bot sasa inasoma messages zake pia
-
-    // 2. Safe access kwa message body
+    // 1. Safe access kwa message body
     const body = msg?.message?.extendedTextMessage?.text?.trim() ||
                  msg?.message?.conversation?.trim() || ''
 
-    // 3. Angalia kama ni namba tu
+    if (!body) return
+
+    const prefix = botSettings?.prefix || '!'
+
+    // 2. FIX MUHIMU: Kama ina prefix mbele, wacha ipite kwa command handler
+    if (body.startsWith(prefix)) return
+
+    // 3. Angalia kama ni namba peke yake tu, sio "7ping"
+    if (!/^\d+$/.test(body)) return
+
     const choice = parseInt(body)
     if (isNaN(choice)) return
 
-    // 4. Angalia kama kuna menu iliyohifadhiwa - IMEBAKI
+    // 4. Angalia kama kuna menu iliyohifadhiwa
     if (!botSettings?.lastMenuCategories ||!Array.isArray(botSettings.lastMenuCategories)) {
       return sock.sendMessage(from, { text: '> Menu expired. Send `menu` again.' }, { quoted: msg }).catch(() => {})
     }
 
-    // 5. Angalia kama reply ni ya chat hii - IMEBAKI
+    // 5. Angalia kama reply ni ya chat hii
     if (botSettings.lastMenuFrom && botSettings.lastMenuFrom!== from) {
       return sock.sendMessage(from, { text: '> Menu expired. Send `menu` again.' }, { quoted: msg }).catch(() => {})
     }
@@ -25,7 +31,7 @@ export default async function menureply(sock, { msg, from, sender }, botSettings
     const commandsMap = botSettings.lastMenuCommands || {}
     const emojisMap = botSettings.lastMenuEmojis || {}
 
-    // 6. Validate namba - IMEBAKI
+    // 6. Validate namba
     if (choice < 1 || choice > categories.length) {
       return sock.sendMessage(from, { text: `> Invalid number. Send 1-${categories.length}` }, { quoted: msg }).catch(() => {})
     }
@@ -33,7 +39,6 @@ export default async function menureply(sock, { msg, from, sender }, botSettings
     // 7. Chukua category
     const selectedCat = categories[choice - 1]
     const commands = commandsMap[selectedCat] || []
-    const prefix = botSettings.prefix || '!'
     const catEmoji = emojisMap[selectedCat] || '📁'
 
     // 8. React
